@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { AlertTriangle, ChevronUp } from "lucide-react";
+import { AlertTriangle, ChevronUp, Loader2 } from "lucide-react";
 
-export default function BottomBar({ view, onViewChange, tableCount, relationshipCount, problems }) {
+export default function BottomBar({ view, viewLoading, onViewChange, tableCount, relationshipCount, problems }) {
   const [problemsOpen, setProblemsOpen] = useState(false);
   const errorCount = problems.filter((p) => p.severity === "error").length;
   const warningCount = problems.filter((p) => p.severity === "warning").length;
@@ -41,6 +41,7 @@ export default function BottomBar({ view, onViewChange, tableCount, relationship
         >
           Code
         </button>
+        {viewLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
         <span className="font-mono text-[11px] text-muted-foreground">
           {tableCount} tables · {relationshipCount} relationships
         </span>

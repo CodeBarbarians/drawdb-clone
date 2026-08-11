@@ -68,6 +68,7 @@ export function makeTable(overrides = {}) {
     position: { x: 100, y: 100 },
     color: "#2f6feb",
     hidden: false,
+    locked: false,
     columns: [makeColumn({ name: "id", type: "INTEGER", pk: true, notNull: true, autoIncrement: true })],
     ...overrides,
   };

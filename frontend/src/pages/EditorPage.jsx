@@ -2,15 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import ReactFlow, {
   Background,
-  Controls,
   MiniMap,
+  ReactFlowProvider,
   addEdge,
   applyEdgeChanges,
   applyNodeChanges,
+  useUpdateNodeInternals,
 } from "reactflow";
 import "reactflow/dist/style.css";
+import { Lock as LockIcon, Maximize, Wand2, ZoomIn, ZoomOut } from "lucide-react";
 
 import client from "../api/client";
+import { useAuth } from "../context/AuthContext";
 import BottomBar from "../components/BottomBar";
 import ExportModal from "../components/ExportModal";
 import ImportModal from "../components/ImportModal";
@@ -20,11 +23,14 @@ import TableNode from "../components/TableNode";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { generateSQL } from "../lib/sqlExport";
+import { generateDBML } from "../lib/dbmlExport";
 import { computeProblems } from "../lib/problems";
+import { autoLayout } from "../lib/autoLayout";
 import { makeColumn, makeTable, nextId } from "../lib/dbTypes";
 
 const nodeTypes = { table: TableNode };
 const HISTORY_LIMIT = 50;
+const DEFAULT_ZOOM_SPEED = 1.6;
 
 function tableToNode(table, dbType, handlers) {
   return {
@@ -32,6 +38,7 @@ function tableToNode(table, dbType, handlers) {
     type: "table",
     position: table.position || { x: 100, y: 100 },
     hidden: !!table.hidden,
+    draggable: !table.locked,
     data: { table, dbType, ...handlers },
   };
 }
@@ -47,9 +54,28 @@ function relationshipToEdge(rel) {
   };
 }
 
+// useUpdateNodeInternals only works inside the ReactFlow tree, so this lives
+// as a child of <ReactFlow> rather than being called from EditorPage itself.
+// React Flow caches each handle's position and doesn't always re-measure it
+// after a row's content changes (e.g. adding/removing a column), so nudge it
+// to re-measure whenever a table's column count changes — otherwise handles
+// can drift from their row, most visible at high zoom.
+function NodeInternalsSync({ nodes, columnCountsKey }) {
+  const updateNodeInternals = useUpdateNodeInternals();
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      nodes.forEach((n) => updateNodeInternals(n.id));
+    });
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columnCountsKey]);
+  return null;
+}
+
 export default function EditorPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
 
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
@@ -62,12 +88,21 @@ export default function EditorPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [importPreset, setImportPreset] = useState(null);
   const [view, setView] = useState("structure");
+  const [viewLoading, setViewLoading] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
   const [showMiniMap, setShowMiniMap] = useState(true);
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
   const [autoSave, setAutoSave] = useState(() => localStorage.getItem("autoSave") !== "false");
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
+  const [showZoomSettings, setShowZoomSettings] = useState(false);
+  const [zoomSpeed, setZoomSpeed] = useState(() => {
+    const stored = parseFloat(localStorage.getItem("zoomSpeed"));
+    return Number.isFinite(stored) && stored > 1 ? stored : DEFAULT_ZOOM_SPEED;
+  });
+  const [globalLocked, setGlobalLocked] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(true);
+  const [sidebarDetached, setSidebarDetached] = useState(false);
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
   const rfInstance = useRef(null);
@@ -75,7 +110,11 @@ export default function EditorPage() {
 
   const updateTable = useCallback((tableId, patch) => {
     setNodes((nds) =>
-      nds.map((n) => (n.id === tableId ? { ...n, data: { ...n.data, table: { ...n.data.table, ...patch } } } : n))
+      nds.map((n) => {
+        if (n.id !== tableId) return n;
+        const table = { ...n.data.table, ...patch };
+        return { ...n, draggable: !table.locked, data: { ...n.data, table } };
+      })
     );
   }, []);
 
@@ -137,9 +176,26 @@ export default function EditorPage() {
     [pushHistory]
   );
 
+  const toggleTableLock = useCallback((tableId) => {
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (n.id !== tableId) return n;
+        const table = { ...n.data.table, locked: !n.data.table.locked };
+        return { ...n, draggable: !table.locked, data: { ...n.data, table } };
+      })
+    );
+  }, []);
+
   const handlers = useMemo(
-    () => ({ onUpdateTable: updateTable, onDeleteTable: deleteTable, onAddColumn: addColumn, onUpdateColumn: updateColumn, onDeleteColumn: deleteColumn }),
-    [updateTable, deleteTable, addColumn, updateColumn, deleteColumn]
+    () => ({
+      onUpdateTable: updateTable,
+      onDeleteTable: deleteTable,
+      onAddColumn: addColumn,
+      onUpdateColumn: updateColumn,
+      onDeleteColumn: deleteColumn,
+      onToggleLock: toggleTableLock,
+    }),
+    [updateTable, deleteTable, addColumn, updateColumn, deleteColumn, toggleTableLock]
   );
 
   useEffect(() => {
@@ -166,6 +222,14 @@ export default function EditorPage() {
   useEffect(() => {
     setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, dbType } })));
   }, [dbType]);
+
+  useEffect(() => {
+    setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, globalLocked } })));
+  }, [globalLocked]);
+
+  // Passed to <NodeInternalsSync> below, which does the actual re-measuring
+  // (that hook only works inside the ReactFlow tree, not here).
+  const columnCountsKey = nodes.map((n) => `${n.id}:${n.data.table.columns.length}`).join("|");
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -278,6 +342,16 @@ export default function EditorPage() {
     URL.revokeObjectURL(url);
   };
 
+  const handleExportDBML = () => {
+    const blob = new Blob([generateDBML(buildDiagramModel())], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${diagramName || "diagram"}.dbml`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleImportApply = (model, targetDbType) => {
     pushHistory();
     setDbType(targetDbType);
@@ -328,13 +402,39 @@ export default function EditorPage() {
   };
 
   const toggleTableVisibility = (tableId) => {
-    setNodes((nds) =>
-      nds.map((n) =>
+    setNodes((nds) => {
+      const updated = nds.map((n) =>
         n.id === tableId
           ? { ...n, hidden: !n.data.table.hidden, data: { ...n.data, table: { ...n.data.table, hidden: !n.data.table.hidden } } }
           : n
-      )
-    );
+      );
+      const hiddenIds = new Set(updated.filter((n) => n.hidden).map((n) => n.id));
+      setEdges((eds) => eds.map((e) => ({ ...e, hidden: hiddenIds.has(e.source) || hiddenIds.has(e.target) })));
+      return updated;
+    });
+  };
+
+  const handleAutoArrange = () => {
+    pushHistory();
+    setNodes((nds) => autoLayout(nds, edges));
+    setTimeout(() => rfInstance.current?.fitView(), 50);
+  };
+
+  // React Flow's own zoom in/out buttons apply a fixed 1.2x step with no way
+  // to speed it up, so these bypass that and jump zoom level directly.
+  const handleZoomIn = () => {
+    const zoom = rfInstance.current?.getZoom() ?? 1;
+    rfInstance.current?.zoomTo(Math.min(zoom * zoomSpeed, 4), { duration: 120 });
+  };
+  const handleZoomOut = () => {
+    const zoom = rfInstance.current?.getZoom() ?? 1;
+    rfInstance.current?.zoomTo(Math.max(zoom / zoomSpeed, 0.02), { duration: 120 });
+  };
+
+  const updateZoomSpeed = (value) => {
+    const clamped = Math.min(Math.max(value, 1.05), 4);
+    setZoomSpeed(clamped);
+    localStorage.setItem("zoomSpeed", String(clamped));
   };
 
   const deleteRelationship = (relId) => {
@@ -393,6 +493,18 @@ export default function EditorPage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [handleSave, undo, redo]);
 
+  const handleViewChange = useCallback(
+    (next) => {
+      if (next === view) return;
+      setViewLoading(true);
+      requestAnimationFrame(() => {
+        setView(next);
+        requestAnimationFrame(() => setViewLoading(false));
+      });
+    },
+    [view]
+  );
+
   const problems = useMemo(
     () => computeProblems(nodes.map((n) => n.data.table), buildDiagramModel().relationships),
     [nodes, buildDiagramModel]
@@ -401,6 +513,7 @@ export default function EditorPage() {
   if (loading) return <div className="editor-loading">Loading diagram…</div>;
 
   return (
+    <ReactFlowProvider>
     <div className="editor">
       <MenuBar
         diagramName={diagramName}
@@ -414,6 +527,7 @@ export default function EditorPage() {
         onImportFormat={openImport}
         onExportSQL={handleExportDialect}
         onExportJSON={handleExportJSON}
+        onExportDBML={handleExportDBML}
         onUndo={undo}
         onRedo={redo}
         canUndo={past.length > 0}
@@ -421,8 +535,8 @@ export default function EditorPage() {
         onDeleteSelected={deleteSelected}
         onDuplicateSelected={duplicateSelected}
         onSelectAll={selectAll}
-        onZoomIn={() => rfInstance.current?.zoomIn()}
-        onZoomOut={() => rfInstance.current?.zoomOut()}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
         onFitView={() => rfInstance.current?.fitView()}
         onToggleFullscreen={() => {
           if (document.fullscreenElement) document.exitFullscreen();
@@ -432,6 +546,21 @@ export default function EditorPage() {
         onToggleGrid={() => setShowGrid((v) => !v)}
         showMiniMap={showMiniMap}
         onToggleMiniMap={() => setShowMiniMap((v) => !v)}
+        showSidebar={showSidebar}
+        onToggleSidebar={() => setShowSidebar((v) => !v)}
+        sidebarDetached={sidebarDetached}
+        onToggleSidebarDetached={() => setSidebarDetached((v) => !v)}
+        onCycleSidebar={() => {
+          if (!showSidebar) {
+            setShowSidebar(true);
+            setSidebarDetached(false);
+          } else if (!sidebarDetached) {
+            setSidebarDetached(true);
+          } else {
+            setShowSidebar(false);
+            setSidebarDetached(false);
+          }
+        }}
         theme={theme}
         onToggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
         autoSave={autoSave}
@@ -441,24 +570,37 @@ export default function EditorPage() {
             return !v;
           })
         }
+        onShowZoomSettings={() => setShowZoomSettings(true)}
+        onAutoArrange={handleAutoArrange}
+        globalLocked={globalLocked}
+        onToggleGlobalLock={() => setGlobalLocked((v) => !v)}
         onShowShortcuts={() => setShowShortcuts(true)}
         onShowAbout={() => setShowAbout(true)}
+        user={user}
+        onLogout={logout}
       />
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar
-          tables={nodes.map((n) => n.data.table)}
-          relationships={buildDiagramModel().relationships}
-          dbType={dbType}
-          onAddTable={addTable}
-          onSelectTable={selectTable}
-          onToggleTableVisibility={toggleTableVisibility}
-          onDeleteTable={deleteTable}
-          onDeleteRelationship={deleteRelationship}
-          onUpdateTable={updateTable}
-          onAddColumn={addColumn}
-          onUpdateColumn={updateColumn}
-          onDeleteColumn={deleteColumn}
-        />
+        {showSidebar && (
+          <div className={sidebarDetached ? "py-3 pl-3" : ""}>
+            <Sidebar
+              tables={nodes.map((n) => n.data.table)}
+              relationships={buildDiagramModel().relationships}
+              dbType={dbType}
+              globalLocked={globalLocked}
+              detached={sidebarDetached}
+              onAddTable={addTable}
+              onSelectTable={selectTable}
+              onToggleTableVisibility={toggleTableVisibility}
+              onToggleTableLock={toggleTableLock}
+              onDeleteTable={deleteTable}
+              onDeleteRelationship={deleteRelationship}
+              onUpdateTable={updateTable}
+              onAddColumn={addColumn}
+              onUpdateColumn={updateColumn}
+              onDeleteColumn={deleteColumn}
+            />
+          </div>
+        )}
         <div className="editor__canvas relative flex-1">
           {/* Kept mounted under the code view (instead of unmounting) so toggling
               Structure/Code doesn't re-mount every table node on large diagrams. */}
@@ -473,11 +615,51 @@ export default function EditorPage() {
               nodeTypes={nodeTypes}
               minZoom={0.02}
               maxZoom={4}
+              nodesDraggable={!globalLocked}
+              nodesConnectable={!globalLocked}
+              elementsSelectable={!globalLocked}
               onlyRenderVisibleElements
               fitView
             >
+              <NodeInternalsSync nodes={nodes} columnCountsKey={columnCountsKey} />
               {showGrid && <Background />}
-              <Controls />
+              <div className="absolute bottom-3 left-3 z-10 flex flex-col gap-0.5 rounded-md border border-border bg-[color:var(--bg-elevated)] p-1 shadow-lg">
+                <button
+                  className="flex h-7 w-7 items-center justify-center rounded text-foreground hover:bg-accent"
+                  title="Zoom in"
+                  onClick={handleZoomIn}
+                >
+                  <ZoomIn className="h-4 w-4" />
+                </button>
+                <button
+                  className="flex h-7 w-7 items-center justify-center rounded text-foreground hover:bg-accent"
+                  title="Zoom out"
+                  onClick={handleZoomOut}
+                >
+                  <ZoomOut className="h-4 w-4" />
+                </button>
+                <button
+                  className="flex h-7 w-7 items-center justify-center rounded text-foreground hover:bg-accent"
+                  title="Fit view"
+                  onClick={() => rfInstance.current?.fitView()}
+                >
+                  <Maximize className="h-4 w-4" />
+                </button>
+                {globalLocked && (
+                  <div className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground" title="Canvas locked">
+                    <LockIcon className="h-4 w-4" />
+                  </div>
+                )}
+              </div>
+              <Button
+                variant="outline"
+                size="icon"
+                className="absolute left-3 top-3 z-10 h-8 w-8"
+                title="Auto arrange"
+                onClick={handleAutoArrange}
+              >
+                <Wand2 className="h-4 w-4" />
+              </Button>
               {showMiniMap && (
                 <MiniMap
                   bgColor="var(--bg-elevated)"
@@ -500,7 +682,8 @@ export default function EditorPage() {
       </div>
       <BottomBar
         view={view}
-        onViewChange={setView}
+        viewLoading={viewLoading}
+        onViewChange={handleViewChange}
         tableCount={nodes.length}
         relationshipCount={edges.length}
         problems={problems}
@@ -548,6 +731,43 @@ export default function EditorPage() {
           </div>
         </DialogContent>
       </Dialog>
+      <Dialog open={showZoomSettings} onOpenChange={setShowZoomSettings}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Zoom Speed</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 p-4">
+            <p className="text-xs text-muted-foreground">
+              Controls how much each zoom-in/zoom-out click changes the zoom level. Higher = faster.
+            </p>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min="1.05"
+                max="4"
+                step="0.05"
+                value={zoomSpeed}
+                onChange={(e) => updateZoomSpeed(parseFloat(e.target.value))}
+                className="flex-1 accent-[color:var(--accent)]"
+              />
+              <input
+                type="number"
+                min="1.05"
+                max="4"
+                step="0.05"
+                value={zoomSpeed}
+                onChange={(e) => updateZoomSpeed(parseFloat(e.target.value) || DEFAULT_ZOOM_SPEED)}
+                className="h-8 w-16 rounded-md border border-border bg-background px-2 text-xs text-foreground"
+              />
+            </div>
+            <p className="font-mono text-[11px] text-muted-foreground">Suggested: {DEFAULT_ZOOM_SPEED}×</p>
+            <Button size="sm" variant="outline" onClick={() => updateZoomSpeed(DEFAULT_ZOOM_SPEED)}>
+              Reset to default
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
+    </ReactFlowProvider>
   );
 }

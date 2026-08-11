@@ -5,11 +5,12 @@ import { Checkbox } from "./ui/checkbox";
 import { Input } from "./ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
-export function NullableToggle({ column, onToggle, className = "h-7 w-7" }) {
+export function NullableToggle({ column, onToggle, className = "h-7 w-7", disabled = false }) {
   return (
     <button
       title="Nullable"
-      className={`nodrag flex shrink-0 items-center justify-center rounded font-mono text-xs ${className} ${
+      disabled={disabled}
+      className={`nodrag flex shrink-0 items-center justify-center rounded font-mono text-xs disabled:cursor-not-allowed disabled:opacity-50 ${className} ${
         !column.notNull ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"
       }`}
       onClick={onToggle}
@@ -19,11 +20,12 @@ export function NullableToggle({ column, onToggle, className = "h-7 w-7" }) {
   );
 }
 
-export function PkToggle({ column, onToggle, className = "h-7 w-7" }) {
+export function PkToggle({ column, onToggle, className = "h-7 w-7", disabled = false }) {
   return (
     <button
       title="Primary key"
-      className={`nodrag flex shrink-0 items-center justify-center rounded ${className} ${
+      disabled={disabled}
+      className={`nodrag flex shrink-0 items-center justify-center rounded disabled:cursor-not-allowed disabled:opacity-50 ${className} ${
         column.pk ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"
       }`}
       onClick={onToggle}
@@ -33,12 +35,13 @@ export function PkToggle({ column, onToggle, className = "h-7 w-7" }) {
   );
 }
 
-export function ColumnOptionsPopover({ table, column, onUpdateColumn, onDeleteColumn, triggerClassName = "" }) {
+export function ColumnOptionsPopover({ table, column, onUpdateColumn, onDeleteColumn, triggerClassName = "", disabled = false }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
         <button
-          className={`nodrag flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground ${triggerClassName}`}
+          disabled={disabled}
+          className={`nodrag flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 ${triggerClassName}`}
         >
           <MoreHorizontal className="h-3.5 w-3.5" />
         </button>

@@ -1,9 +1,12 @@
+import { Moon, PanelLeftClose, PanelLeftOpen, Sun, User } from "lucide-react";
+
 import Logo from "./Logo";
 import { Input } from "./ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuSub,
@@ -50,6 +53,7 @@ export default function MenuBar({
   onImportFormat,
   onExportSQL,
   onExportJSON,
+  onExportDBML,
   onUndo,
   onRedo,
   canUndo,
@@ -65,17 +69,35 @@ export default function MenuBar({
   onToggleGrid,
   showMiniMap,
   onToggleMiniMap,
+  showSidebar,
+  onToggleSidebar,
+  sidebarDetached,
+  onToggleSidebarDetached,
+  onCycleSidebar,
   theme,
   onToggleTheme,
   autoSave,
   onToggleAutoSave,
+  onShowZoomSettings,
+  onAutoArrange,
+  globalLocked,
+  onToggleGlobalLock,
   onShowShortcuts,
   onShowAbout,
+  user,
+  onLogout,
 }) {
   return (
     <div className="flex flex-col border-b border-border bg-[color:var(--bg-elevated)]">
       <div className="flex items-center gap-3 px-4 py-2">
         <Logo size={24} />
+        <button
+          className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          title={!showSidebar ? "Show sidebar" : sidebarDetached ? "Hide sidebar" : "Detach sidebar"}
+          onClick={onCycleSidebar}
+        >
+          {showSidebar ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+        </button>
         <button className="font-mono text-xs text-muted-foreground hover:text-[color:var(--accent-hover)]" onClick={onBack}>
           Diagrams
         </button>
@@ -86,6 +108,29 @@ export default function MenuBar({
           className="h-7 w-56 border-transparent bg-transparent px-1 font-sans text-sm font-semibold shadow-none hover:border-border"
         />
         {savedAt && <span className="font-mono text-[11px] text-[color:var(--success)]">Saved {savedAt}</span>}
+        <div className="flex-1" />
+        <button
+          className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+          onClick={onToggleTheme}
+        >
+          {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="rounded p-1 text-muted-foreground outline-none hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
+              title={user?.email}
+            >
+              <User className="h-4 w-4" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>{user?.email}</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onLogout}>Logout</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       <div className="flex items-center gap-1 px-3 py-1">
@@ -136,6 +181,7 @@ export default function MenuBar({
             <DropdownMenuSubTrigger>Export as</DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
               <DropdownMenuItem onClick={onExportJSON}>JSON</DropdownMenuItem>
+              <DropdownMenuItem onClick={onExportDBML}>DBML</DropdownMenuItem>
               <DropdownMenuItem disabled>PNG</DropdownMenuItem>
               <DropdownMenuItem disabled>SVG</DropdownMenuItem>
             </DropdownMenuSubContent>
@@ -168,6 +214,13 @@ export default function MenuBar({
           <DropdownMenuItem onClick={onToggleFullscreen}>Toggle fullscreen</DropdownMenuItem>
           <DropdownMenuItem onClick={onToggleGrid}>{showGrid ? "Hide" : "Show"} grid</DropdownMenuItem>
           <DropdownMenuItem onClick={onToggleMiniMap}>{showMiniMap ? "Hide" : "Show"} minimap</DropdownMenuItem>
+          <DropdownMenuItem onClick={onToggleSidebar}>{showSidebar ? "Hide" : "Show"} sidebar</DropdownMenuItem>
+          <DropdownMenuItem onClick={onToggleSidebarDetached} disabled={!showSidebar}>
+            {sidebarDetached ? "Dock" : "Detach"} sidebar
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={onAutoArrange}>Auto arrange</DropdownMenuItem>
+          <DropdownMenuItem onClick={onToggleGlobalLock}>{globalLocked ? "Unlock" : "Lock"} all tables</DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={onToggleTheme}>
             Switch to {theme === "dark" ? "light" : "dark"} theme
@@ -176,6 +229,7 @@ export default function MenuBar({
 
         <MenuButton label="Settings">
           <DropdownMenuItem onClick={onToggleAutoSave}>{autoSave ? "Disable" : "Enable"} autosave</DropdownMenuItem>
+          <DropdownMenuItem onClick={onShowZoomSettings}>Zoom speed…</DropdownMenuItem>
           <DropdownMenuItem disabled>Table width</DropdownMenuItem>
           <DropdownMenuItem disabled>Language</DropdownMenuItem>
         </MenuButton>

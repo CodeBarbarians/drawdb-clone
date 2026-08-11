@@ -31,7 +31,7 @@
   --popover: var(--bg-elevated);
   --popover-foreground: var(--text);
   --primary: var(--accent);
-  --primary-foreground: var(--bg);
+  --primary-foreground: #0f0d0a;
   --secondary: var(--bg-panel);
   --secondary-foreground: var(--text);
   --muted: var(--bg-panel);
@@ -39,7 +39,7 @@
   --surface-hover: #2a2015;
   --accent-foreground: var(--text);
   --destructive: var(--danger);
-  --destructive-foreground: var(--text);
+  --destructive-foreground: #f4efe6;
   --input: var(--border);
   --ring: var(--accent);
   --shadcn-radius: 10px;
@@ -55,6 +55,12 @@
   --text: #1c1712;
   --text-dim: #4a423a;
   --text-mute: #7c746b;
+  --accent-hover: #c2440e;
+  --surface-hover: #e4dbc9;
+  --success: #2f7a3a;
+  --success-bg: #dcf0d2;
+  --danger: #c23b28;
+  --danger-bg: #fbe1dc;
 }
 
 * {
@@ -236,10 +242,13 @@ select {
 }
 
 .diagram-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 140px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 18px;
+  padding: 14px 10px 14px 18px;
   cursor: pointer;
   transition: border-color 0.15s;
 }
@@ -248,21 +257,57 @@ select {
   border-color: var(--accent);
 }
 
-.diagram-card h3 {
-  margin: 0 0 4px;
-  font-size: 15px;
-  font-weight: 600;
+.diagram-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px;
 }
 
-.diagram-card p {
+.diagram-card h3 {
   margin: 0;
+  padding-top: 4px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.diagram-card__delete {
+  flex-shrink: 0;
+  color: var(--text-mute);
+}
+
+.diagram-card__delete:hover {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.diagram-card__badge {
+  align-self: flex-start;
+  margin-top: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-panel);
+  font-family: "Space Mono", monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+.diagram-card__date {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: auto 0 0;
+  padding-top: 10px;
   font-family: "Space Mono", monospace;
   font-size: 11px;
   color: var(--text-mute);
 }
 
-.diagram-card__date {
-  margin-bottom: 12px !important;
+.diagram-card__time {
+  font-size: 10px;
 }
 
 /* ---------- Editor ---------- */
@@ -355,6 +400,15 @@ select {
   opacity: 1;
 }
 
+.table-node__delete:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.table-node__delete:disabled:hover {
+  color: var(--text-mute);
+}
+
 .table-node__columns {
   display: flex;
   flex-direction: column;
@@ -392,6 +446,12 @@ select {
   outline: none;
 }
 
+.table-node__col-name[readonly],
+.table-node__name[readonly] {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .table-node__col-type {
   flex: 1;
   background: var(--bg);
@@ -401,6 +461,11 @@ select {
   border-radius: 4px;
   font-family: "Space Mono", monospace;
   font-size: 11px;
+}
+
+.table-node__col-type:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .table-node__flag {
@@ -432,11 +497,30 @@ select {
   color: var(--danger);
 }
 
+.table-node__col-delete:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.table-node__col-delete:disabled:hover {
+  color: var(--text-mute);
+}
+
 .table-node__handle {
-  width: 8px;
-  height: 8px;
-  background: var(--accent);
+  width: 6px;
+  height: 6px;
+  background: var(--text-mute);
   border: 1px solid var(--bg-elevated);
+  opacity: 0.5;
+  transition: opacity 0.15s, background-color 0.15s, width 0.15s, height 0.15s;
+}
+
+.table-node__row:hover .table-node__handle,
+.table-node__handle:hover {
+  width: 9px;
+  height: 9px;
+  background: var(--accent);
+  opacity: 1;
 }
 
 .table-node__add-col {
@@ -454,6 +538,12 @@ select {
 
 .table-node__add-col:hover {
   background: rgba(255, 90, 31, 0.1);
+}
+
+.table-node__add-col:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: transparent;
 }
 
 /* ---------- Modal ---------- */

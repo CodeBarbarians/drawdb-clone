@@ -1,13 +1,15 @@
 import { memo } from "react";
 import { Handle, Position } from "reactflow";
-import { X } from "lucide-react";
+import { Lock, Unlock, X } from "lucide-react";
 
 import { ColumnOptionsPopover, NullableToggle, PkToggle } from "./ColumnControls";
 import { DB_TYPES } from "../lib/dbTypes";
 
 function TableNode({ data }) {
-  const { table, dbType, onUpdateTable, onDeleteTable, onAddColumn, onUpdateColumn, onDeleteColumn } = data;
+  const { table, dbType, globalLocked, onUpdateTable, onDeleteTable, onAddColumn, onUpdateColumn, onDeleteColumn, onToggleLock } =
+    data;
   const typeOptions = DB_TYPES[dbType]?.columnTypes || DB_TYPES.postgresql.columnTypes;
+  const locked = table.locked || globalLocked;
 
   return (
     <div className="table-node" style={{ borderLeftColor: table.color }}>
@@ -15,9 +17,22 @@ function TableNode({ data }) {
         <input
           className="table-node__name nodrag"
           value={table.name}
+          readOnly={locked}
           onChange={(e) => onUpdateTable(table.id, { name: e.target.value })}
         />
-        <button className="table-node__delete nodrag" title="Delete table" onClick={() => onDeleteTable(table.id)}>
+        <button
+          className="table-node__delete nodrag"
+          title={table.locked ? "Unlock table" : "Lock table"}
+          onClick={() => onToggleLock(table.id)}
+        >
+          {table.locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+        </button>
+        <button
+          className="table-node__delete nodrag"
+          title="Delete table"
+          disabled={locked}
+          onClick={() => onDeleteTable(table.id)}
+        >
           <X className="h-4 w-4" />
         </button>
       </div>
@@ -29,11 +44,13 @@ function TableNode({ data }) {
             <input
               className="table-node__col-name nodrag"
               value={col.name}
+              readOnly={locked}
               onChange={(e) => onUpdateColumn(table.id, col.id, { name: e.target.value })}
             />
             <select
               className="table-node__col-type nodrag"
               value={col.type}
+              disabled={locked}
               onChange={(e) => onUpdateColumn(table.id, col.id, { type: e.target.value })}
             >
               {typeOptions.map((t) => (
@@ -46,11 +63,13 @@ function TableNode({ data }) {
               column={col}
               onToggle={() => onUpdateColumn(table.id, col.id, { notNull: !col.notNull })}
               className="h-5 w-5 text-[10px]"
+              disabled={locked}
             />
             <PkToggle
               column={col}
               onToggle={() => onUpdateColumn(table.id, col.id, { pk: !col.pk })}
               className="h-5 w-5"
+              disabled={locked}
             />
             <ColumnOptionsPopover
               table={table}
@@ -58,10 +77,12 @@ function TableNode({ data }) {
               onUpdateColumn={onUpdateColumn}
               onDeleteColumn={onDeleteColumn}
               triggerClassName="h-5 w-5"
+              disabled={locked}
             />
             <button
               className="table-node__col-delete nodrag"
               title="Delete column"
+              disabled={locked}
               onClick={() => onDeleteColumn(table.id, col.id)}
             >
               <X className="h-3.5 w-3.5" />
@@ -71,7 +92,7 @@ function TableNode({ data }) {
         ))}
       </div>
 
-      <button className="table-node__add-col nodrag" onClick={() => onAddColumn(table.id)}>
+      <button className="table-node__add-col nodrag" disabled={locked} onClick={() => onAddColumn(table.id)}>
         + Add column
       </button>
     </div>

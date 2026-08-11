@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, Eye, EyeOff, Plus, Search, Trash2 } from "lucide-react";
+import { ChevronDown, Eye, EyeOff, Lock, Plus, Search, Trash2, Unlock } from "lucide-react";
 
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -11,10 +11,12 @@ import { DB_TYPES } from "../lib/dbTypes";
 function TableRow({
   table,
   dbType,
+  globalLocked,
   expanded,
   onToggleExpand,
   onSelectTable,
   onToggleTableVisibility,
+  onToggleTableLock,
   onDeleteTable,
   onUpdateTable,
   onAddColumn,
@@ -22,12 +24,20 @@ function TableRow({
   onDeleteColumn,
 }) {
   const typeOptions = DB_TYPES[dbType]?.columnTypes || DB_TYPES.postgresql.columnTypes;
+  const locked = table.locked || globalLocked;
 
   return (
     <div className="rounded-md border border-border bg-[color:var(--bg-panel)]" style={{ borderLeft: `4px solid ${table.color}` }}>
       <div className="flex items-center gap-2 px-2 py-1.5 text-sm">
         <button className="flex-1 truncate text-left font-medium" onClick={() => onSelectTable(table.id)}>
           {table.name}
+        </button>
+        <button
+          className="text-muted-foreground hover:text-foreground"
+          title={table.locked ? "Unlock table position" : "Lock table position"}
+          onClick={() => onToggleTableLock(table.id)}
+        >
+          {table.locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
         </button>
         <button
           className="text-muted-foreground hover:text-foreground"
@@ -48,6 +58,7 @@ function TableRow({
             <Input
               className="h-7 flex-1 text-xs"
               value={table.name}
+              readOnly={locked}
               onChange={(e) => onUpdateTable(table.id, { name: e.target.value })}
             />
           </label>
@@ -57,9 +68,10 @@ function TableRow({
               <Input
                 className="h-7 flex-1 text-xs"
                 value={col.name}
+                readOnly={locked}
                 onChange={(e) => onUpdateColumn(table.id, col.id, { name: e.target.value })}
               />
-              <Select value={col.type} onValueChange={(v) => onUpdateColumn(table.id, col.id, { type: v })}>
+              <Select value={col.type} onValueChange={(v) => onUpdateColumn(table.id, col.id, { type: v })} disabled={locked}>
                 <SelectTrigger className="h-7 w-24 px-1.5 font-mono text-[11px]">
                   <SelectValue />
                 </SelectTrigger>
@@ -71,17 +83,27 @@ function TableRow({
                   ))}
                 </SelectContent>
               </Select>
-              <NullableToggle column={col} onToggle={() => onUpdateColumn(table.id, col.id, { notNull: !col.notNull })} />
-              <PkToggle column={col} onToggle={() => onUpdateColumn(table.id, col.id, { pk: !col.pk })} />
-              <ColumnOptionsPopover table={table} column={col} onUpdateColumn={onUpdateColumn} onDeleteColumn={onDeleteColumn} />
+              <NullableToggle
+                column={col}
+                onToggle={() => onUpdateColumn(table.id, col.id, { notNull: !col.notNull })}
+                disabled={locked}
+              />
+              <PkToggle column={col} onToggle={() => onUpdateColumn(table.id, col.id, { pk: !col.pk })} disabled={locked} />
+              <ColumnOptionsPopover
+                table={table}
+                column={col}
+                onUpdateColumn={onUpdateColumn}
+                onDeleteColumn={onDeleteColumn}
+                disabled={locked}
+              />
             </div>
           ))}
 
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" className="flex-1" onClick={() => onAddColumn(table.id)}>
+            <Button size="sm" variant="outline" className="flex-1" disabled={locked} onClick={() => onAddColumn(table.id)}>
               <Plus className="h-3.5 w-3.5" /> Add field
             </Button>
-            <Button size="sm" variant="destructive" onClick={() => onDeleteTable(table.id)}>
+            <Button size="sm" variant="destructive" disabled={locked} onClick={() => onDeleteTable(table.id)}>
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </div>
@@ -95,9 +117,12 @@ export default function Sidebar({
   tables,
   relationships,
   dbType,
+  globalLocked,
+  detached,
   onAddTable,
   onSelectTable,
   onToggleTableVisibility,
+  onToggleTableLock,
   onDeleteTable,
   onDeleteRelationship,
   onUpdateTable,
@@ -110,7 +135,13 @@ export default function Sidebar({
   const filtered = tables.filter((t) => t.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div className="flex h-full w-80 flex-col border-r border-border bg-[color:var(--bg-elevated)]">
+    <div
+      className={
+        detached
+          ? "flex h-[calc(100%-24px)] w-80 flex-col rounded-lg border border-border bg-[color:var(--bg-elevated)] shadow-xl"
+          : "flex h-full w-80 flex-col border-r border-border bg-[color:var(--bg-elevated)]"
+      }
+    >
       <Tabs defaultValue="tables" className="flex h-full flex-col">
         <TabsList className="px-2 pt-2">
           <TabsTrigger value="tables">Tables ({tables.length})</TabsTrigger>
@@ -139,10 +170,12 @@ export default function Sidebar({
                 key={table.id}
                 table={table}
                 dbType={dbType}
+                globalLocked={globalLocked}
                 expanded={expandedId === table.id}
                 onToggleExpand={(id) => setExpandedId((cur) => (cur === id ? null : id))}
                 onSelectTable={onSelectTable}
                 onToggleTableVisibility={onToggleTableVisibility}
+                onToggleTableLock={onToggleTableLock}
                 onDeleteTable={onDeleteTable}
                 onUpdateTable={onUpdateTable}
                 onAddColumn={onAddColumn}
