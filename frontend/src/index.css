@@ -468,6 +468,15 @@ select {
   cursor: not-allowed;
 }
 
+.table-node__name--static,
+.table-node__col-name--static {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .table-node__flag {
   display: flex;
   align-items: center;

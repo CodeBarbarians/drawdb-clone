@@ -1,15 +1,48 @@
 import { memo } from "react";
-import { Handle, Position } from "reactflow";
+import { Handle, Position, useStore } from "reactflow";
 import { Lock, Unlock, X } from "lucide-react";
 
 import { ColumnOptionsPopover, NullableToggle, PkToggle } from "./ColumnControls";
 import { DB_TYPES } from "../lib/dbTypes";
+
+// Below this zoom level, individual columns are just a few pixels tall and
+// unreadable/unusable anyway. Rendering full inputs/selects/popovers for
+// every column of every table is what makes opening any menu or popover
+// noticeably slow on large diagrams (100+ tables forces the browser to lay
+// out thousands of interactive controls no one can currently see). Swapping
+// to a plain-text compact row below this threshold cuts that DOM weight
+// while keeping one Handle per column so edges stay anchored correctly.
+const COMPACT_ZOOM_THRESHOLD = 0.6;
+
+function useIsCompact() {
+  return useStore((s) => s.transform[2] < COMPACT_ZOOM_THRESHOLD, (a, b) => a === b);
+}
 
 function TableNode({ data }) {
   const { table, dbType, globalLocked, onUpdateTable, onDeleteTable, onAddColumn, onUpdateColumn, onDeleteColumn, onToggleLock } =
     data;
   const typeOptions = DB_TYPES[dbType]?.columnTypes || DB_TYPES.postgresql.columnTypes;
   const locked = table.locked || globalLocked;
+  const compact = useIsCompact();
+
+  if (compact) {
+    return (
+      <div className="table-node" style={{ borderLeftColor: table.color }}>
+        <div className="table-node__header">
+          <span className="table-node__name table-node__name--static nodrag">{table.name}</span>
+        </div>
+        <div className="table-node__columns">
+          {table.columns.map((col) => (
+            <div className="table-node__row table-node__row--compact" key={col.id}>
+              <Handle type="target" position={Position.Left} id={col.id} className="table-node__handle" />
+              <span className="table-node__col-name table-node__col-name--static">{col.name}</span>
+              <Handle type="source" position={Position.Right} id={col.id} className="table-node__handle" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="table-node" style={{ borderLeftColor: table.color }}>
