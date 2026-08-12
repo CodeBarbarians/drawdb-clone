@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import Logo from "../components/Logo";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -9,10 +9,12 @@ import { useAuth } from "../context/AuthContext";
 export default function RegisterPage() {
   const { register } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const returnTo = searchParams.get("returnTo");
 
   const submit = async (e) => {
     e.preventDefault();
@@ -20,7 +22,7 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       await register(email, password);
-      navigate("/");
+      navigate(returnTo || "/");
     } catch (err) {
       setError(err.response?.data?.detail || "Registration failed");
     } finally {
@@ -56,7 +58,8 @@ export default function RegisterPage() {
           {loading ? "Creating…" : "Create account"}
         </Button>
         <p className="auth-card__footer">
-          Already have an account? <Link to="/login">Sign in</Link>
+          Already have an account?{" "}
+          <Link to={returnTo ? `/login?returnTo=${encodeURIComponent(returnTo)}` : "/login"}>Sign in</Link>
         </p>
       </form>
     </div>

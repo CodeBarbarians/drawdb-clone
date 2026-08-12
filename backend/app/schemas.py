@@ -37,10 +37,13 @@ class DiagramUpdate(BaseModel):
 class DiagramOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: str
     name: str
     db_type: str
     data: dict
+    share_token: str | None = None
+    share_mode: str = "readonly"
+    is_owner: bool = True
     created_at: datetime
     updated_at: datetime
 
@@ -48,8 +51,46 @@ class DiagramOut(BaseModel):
 class DiagramSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: str
     name: str
     db_type: str
     created_at: datetime
     updated_at: datetime
+
+
+class ShareUpdate(BaseModel):
+    share_mode: str = Field(default="readonly", pattern="^(readonly|editable)$")
+
+
+class ShareOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    share_token: str
+    share_mode: str
+
+
+class PublicDiagramOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str
+    db_type: str
+    data: dict
+    share_mode: str
+    can_edit: bool = False
+    editable_diagram_id: str | None = None
+
+
+class AccessOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    email: EmailStr
+    first_seen_at: datetime
+    last_seen_at: datetime
+
+
+class ActivityOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    email: EmailStr
+    message: str
+    created_at: datetime

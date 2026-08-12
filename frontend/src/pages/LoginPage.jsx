@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import Logo from "../components/Logo";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -9,10 +9,12 @@ import { useAuth } from "../context/AuthContext";
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const returnTo = searchParams.get("returnTo");
 
   const submit = async (e) => {
     e.preventDefault();
@@ -20,7 +22,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
-      navigate("/");
+      navigate(returnTo || "/");
     } catch (err) {
       setError(err.response?.data?.detail || "Login failed");
     } finally {
@@ -55,7 +57,8 @@ export default function LoginPage() {
           {loading ? "Signing in…" : "Sign in"}
         </Button>
         <p className="auth-card__footer">
-          No account? <Link to="/register">Register</Link>
+          No account?{" "}
+          <Link to={returnTo ? `/register?returnTo=${encodeURIComponent(returnTo)}` : "/register"}>Register</Link>
         </p>
       </form>
     </div>

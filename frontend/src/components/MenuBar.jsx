@@ -1,6 +1,7 @@
-import { Moon, PanelLeftClose, PanelLeftOpen, Sun, User } from "lucide-react";
+import { Moon, PanelLeftClose, PanelLeftOpen, Share2, Sun, User } from "lucide-react";
 
 import Logo from "./Logo";
+import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import {
   DropdownMenu,
@@ -85,6 +86,9 @@ export default function MenuBar({
   onToggleGlobalLock,
   onShowShortcuts,
   onShowAbout,
+  onShare,
+  isOwner = true,
+  collaboratorBadge,
   user,
   onLogout,
 }) {
@@ -109,7 +113,13 @@ export default function MenuBar({
           className="h-7 w-56 border-transparent bg-transparent px-1 font-sans text-sm font-semibold shadow-none hover:border-border"
         />
         {savedAt && <span className="font-mono text-[11px] text-[color:var(--success)]">Saved {savedAt}</span>}
+        {collaboratorBadge}
         <div className="flex-1" />
+        {isOwner && (
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={onShare}>
+            <Share2 className="h-3.5 w-3.5" /> Share
+          </Button>
+        )}
         <button
           className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
           title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
@@ -145,10 +155,14 @@ export default function MenuBar({
           </DropdownMenuItem>
           <DropdownMenuItem onClick={onSaveAs}>Save as…</DropdownMenuItem>
           <DropdownMenuItem disabled>Save as template</DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem className="text-destructive" onClick={onDeleteDiagram}>
-            Delete diagram
-          </DropdownMenuItem>
+          {isOwner && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="text-destructive" onClick={onDeleteDiagram}>
+                Delete diagram
+              </DropdownMenuItem>
+            </>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>Import from</DropdownMenuSubTrigger>

@@ -60,6 +60,20 @@ function extractDefault(dbdefault) {
   return String(dbdefault.value);
 }
 
+// @dbml/core throws a custom error whose top-level `.message` is undefined —
+// the actual syntax diagnostic (with line/column) lives in `.diags[0]`. Without
+// unpacking this, every parse failure surfaces as the same generic "Failed to
+// parse" message regardless of cause, leaving no way to find the bad line.
+function formatParseError(err) {
+  const diag = err?.diags?.[0];
+  if (diag) {
+    const loc = diag.location?.start;
+    const where = loc ? ` (line ${loc.line}, column ${loc.column})` : "";
+    return `${diag.text || diag.message || "Syntax error"}${where}`;
+  }
+  return err?.message || "Failed to parse the provided source.";
+}
+
 /**
  * Parses DBML or SQL DDL (postgres/mysql) source into this app's diagram
  * model. Relationship direction follows dbml-core's endpoint order: the
@@ -80,7 +94,12 @@ export function parseImport(source, format, dbType) {
     return { tables: parsed.tables, relationships: parsed.relationships || [] };
   }
 
-  const database = parser.parse(source, format);
+  let database;
+  try {
+    database = parser.parse(source, format);
+  } catch (err) {
+    throw new Error(formatParseError(err));
+  }
   const schema = database.schemas[0];
   if (!schema) throw new Error("No schema found in imported source");
 

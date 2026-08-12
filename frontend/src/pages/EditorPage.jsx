@@ -10,18 +10,22 @@ import ReactFlow, {
   useUpdateNodeInternals,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { Lock as LockIcon, Maximize, Wand2, ZoomIn, ZoomOut } from "lucide-react";
+import { Lock as LockIcon, Map, Maximize, Wand2, ZoomIn, ZoomOut } from "lucide-react";
 
 import client from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import ActivityPanel from "../components/ActivityPanel";
 import BottomBar from "../components/BottomBar";
 import ExportModal from "../components/ExportModal";
 import ImportModal from "../components/ImportModal";
 import MenuBar from "../components/MenuBar";
+import PresenceBar from "../components/PresenceBar";
+import ShareDialog from "../components/ShareDialog";
 import Sidebar from "../components/Sidebar";
 import TableNode from "../components/TableNode";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import { usePresence } from "../hooks/usePresence";
 import { generateSQL } from "../lib/sqlExport";
 import { generateDBML } from "../lib/dbmlExport";
 import { computeProblems } from "../lib/problems";
@@ -82,7 +86,7 @@ function NodeInternalsSync({ nodes, columnCountsKey }) {
 export default function EditorPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, token: authToken, logout } = useAuth();
 
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
@@ -112,6 +116,23 @@ export default function EditorPage() {
     const stored = parseInt(localStorage.getItem("tableWidth"), 10);
     return Number.isFinite(stored) && stored >= 220 ? stored : DEFAULT_TABLE_WIDTH;
   });
+  const [shareToken, setShareToken] = useState(null);
+  const [shareMode, setShareMode] = useState("readonly");
+  const [sharing, setSharing] = useState(false);
+  const [showShare, setShowShare] = useState(false);
+  const [accessList, setAccessList] = useState([]);
+  const [activityList, setActivityList] = useState([]);
+  const [isOwner, setIsOwner] = useState(true);
+  const { users: presenceUsers, followUserId, setFollowUserId, stopFollowing, sendViewport } = usePresence(
+    id,
+    authToken,
+    !loading
+  );
+  const collaboratorBadge = !isOwner ? (
+    <span className="rounded-full border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+      Collaborator
+    </span>
+  ) : null;
   const [globalLocked, setGlobalLocked] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
   const [sidebarDetached, setSidebarDetached] = useState(false);
@@ -219,6 +240,9 @@ export default function EditorPage() {
       const relationships = data.data?.relationships || [];
       setDiagramName(data.name);
       setDbType(data.db_type);
+      setShareToken(data.share_token || null);
+      setShareMode(data.share_mode || "readonly");
+      setIsOwner(data.is_owner !== false);
       setNodes(tables.map((t) => tableToNode(t, data.db_type, tableWidth, handlers)));
       setEdges(relationships.map(relationshipToEdge));
       setPast([]);
@@ -481,15 +505,27 @@ export default function EditorPage() {
     setTimeout(() => rfInstance.current?.fitView(), 50);
   };
 
+  // Programmatic viewport changes (zoomTo/fitView called directly on the
+  // instance, as opposed to a user drag) don't fire React Flow's onMoveEnd,
+  // so presence wouldn't see them without this explicit broadcast.
+  const broadcastViewportSoon = (delay) => {
+    setTimeout(() => {
+      const viewport = rfInstance.current?.getViewport();
+      if (viewport) sendViewport(viewport);
+    }, delay);
+  };
+
   // React Flow's own zoom in/out buttons apply a fixed 1.2x step with no way
   // to speed it up, so these bypass that and jump zoom level directly.
   const handleZoomIn = () => {
     const zoom = rfInstance.current?.getZoom() ?? 1;
     rfInstance.current?.zoomTo(Math.min(zoom * zoomSpeed, 4), { duration: 120 });
+    broadcastViewportSoon(150);
   };
   const handleZoomOut = () => {
     const zoom = rfInstance.current?.getZoom() ?? 1;
     rfInstance.current?.zoomTo(Math.max(zoom / zoomSpeed, 0.02), { duration: 120 });
+    broadcastViewportSoon(150);
   };
 
   const updateZoomSpeed = (value) => {
@@ -503,6 +539,73 @@ export default function EditorPage() {
     setTableWidth(clamped);
     localStorage.setItem("tableWidth", String(clamped));
   };
+
+  const handleEnableShare = async (mode) => {
+    setSharing(true);
+    try {
+      const { data } = await client.post(`/diagrams/${id}/share`, { share_mode: mode });
+      setShareToken(data.share_token);
+      setShareMode(data.share_mode);
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  const handleChangeShareMode = async (mode) => {
+    setSharing(true);
+    try {
+      const { data } = await client.put(`/diagrams/${id}/share`, { share_mode: mode });
+      setShareMode(data.share_mode);
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  const handleDisableShare = async () => {
+    setSharing(true);
+    try {
+      await client.delete(`/diagrams/${id}/share`);
+      setShareToken(null);
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!showShare || shareMode !== "editable" || !shareToken || !isOwner) return;
+    let active = true;
+    const load = () => {
+      client
+        .get(`/diagrams/${id}/access`)
+        .then(({ data }) => active && setAccessList(data))
+        .catch(() => {});
+      client
+        .get(`/diagrams/${id}/activity`)
+        .then(({ data }) => active && setActivityList(data))
+        .catch(() => {});
+    };
+    load();
+    const interval = setInterval(load, 5000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [showShare, shareMode, shareToken, isOwner, id]);
+
+  useEffect(() => {
+    if (!followUserId) return;
+    const followed = presenceUsers.find((u) => u.user_id === followUserId);
+    if (followed?.viewport) {
+      rfInstance.current?.setViewport(followed.viewport, { duration: 200 });
+    }
+  }, [followUserId, presenceUsers]);
+
+  const handleMoveEnd = useCallback(
+    (_event, viewport) => {
+      sendViewport(viewport);
+    },
+    [sendViewport]
+  );
 
   const deleteRelationship = (relId) => {
     pushHistory();
@@ -605,7 +708,10 @@ export default function EditorPage() {
         onSelectAll={selectAll}
         onZoomIn={handleZoomIn}
         onZoomOut={handleZoomOut}
-        onFitView={() => rfInstance.current?.fitView()}
+        onFitView={() => {
+          rfInstance.current?.fitView();
+          broadcastViewportSoon(350);
+        }}
         onToggleFullscreen={() => {
           if (document.fullscreenElement) document.exitFullscreen();
           else document.documentElement.requestFullscreen();
@@ -645,6 +751,9 @@ export default function EditorPage() {
         onToggleGlobalLock={() => setGlobalLocked((v) => !v)}
         onShowShortcuts={() => setShowShortcuts(true)}
         onShowAbout={() => setShowAbout(true)}
+        onShare={() => setShowShare(true)}
+        isOwner={isOwner}
+        collaboratorBadge={collaboratorBadge}
         user={user}
         onLogout={logout}
       />
@@ -683,6 +792,7 @@ export default function EditorPage() {
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
               onInit={(instance) => (rfInstance.current = instance)}
+              onMoveEnd={handleMoveEnd}
               nodeTypes={nodeTypes}
               minZoom={0.02}
               maxZoom={4}
@@ -712,7 +822,10 @@ export default function EditorPage() {
                 <button
                   className="flex h-7 w-7 items-center justify-center rounded text-foreground hover:bg-accent"
                   title="Fit view"
-                  onClick={() => rfInstance.current?.fitView()}
+                  onClick={() => {
+                    rfInstance.current?.fitView();
+                    broadcastViewportSoon(350);
+                  }}
                 >
                   <Maximize className="h-4 w-4" />
                 </button>
@@ -731,6 +844,15 @@ export default function EditorPage() {
               >
                 <Wand2 className="h-4 w-4" />
               </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="absolute left-12 top-3 z-10 h-8 w-8"
+                title={showMiniMap ? "Hide minimap" : "Show minimap"}
+                onClick={() => setShowMiniMap((v) => !v)}
+              >
+                <Map className="h-4 w-4" />
+              </Button>
               {showMiniMap && (
                 <MiniMap
                   bgColor="var(--bg-elevated)"
@@ -739,6 +861,16 @@ export default function EditorPage() {
                   nodeStrokeColor="var(--border)"
                 />
               )}
+              <div className="absolute right-3 top-3 z-10 flex flex-col items-end gap-2">
+                <ActivityPanel diagramId={id} />
+                <PresenceBar
+                  users={presenceUsers}
+                  currentUserId={user?.id}
+                  followUserId={followUserId}
+                  onFollow={setFollowUserId}
+                  onStopFollowing={stopFollowing}
+                />
+              </div>
             </ReactFlow>
           </div>
           {view === "code" && <pre className="modal__sql absolute inset-0 h-full">{generateSQL(buildDiagramModel(), dbType)}</pre>}
@@ -872,6 +1004,18 @@ export default function EditorPage() {
           </div>
         </DialogContent>
       </Dialog>
+      <ShareDialog
+        open={showShare}
+        onOpenChange={setShowShare}
+        shareToken={shareToken}
+        shareMode={shareMode}
+        sharing={sharing}
+        onEnableShare={handleEnableShare}
+        onDisableShare={handleDisableShare}
+        onChangeMode={handleChangeShareMode}
+        accessList={accessList}
+        activityList={activityList}
+      />
     </div>
     </ReactFlowProvider>
   );

@@ -12,6 +12,7 @@ from .database import get_db
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 ALGORITHM = "HS256"
 
@@ -30,6 +31,17 @@ def create_access_token(subject: str) -> str:
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
 
+def decode_user_from_token(token: str, db: Session) -> models.User | None:
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+        if email is None:
+            return None
+    except JWTError:
+        return None
+    return db.query(models.User).filter(models.User.email == email).first()
+
+
 def get_current_user(
     token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
 ) -> models.User:
@@ -38,15 +50,15 @@ def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
-        email = payload.get("sub")
-        if email is None:
-            raise credentials_error
-    except JWTError:
-        raise credentials_error
-
-    user = db.query(models.User).filter(models.User.email == email).first()
+    user = decode_user_from_token(token, db)
     if user is None:
         raise credentials_error
     return user
+
+
+def get_current_user_optional(
+    token: str | None = Depends(oauth2_scheme_optional), db: Session = Depends(get_db)
+) -> models.User | None:
+    if token is None:
+        return None
+    return decode_user_from_token(token, db)
