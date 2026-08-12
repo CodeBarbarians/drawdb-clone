@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import ReactFlow, { Background, MiniMap, ReactFlowProvider } from "reactflow";
 import "reactflow/dist/style.css";
@@ -6,12 +6,52 @@ import "reactflow/dist/style.css";
 import client from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Button } from "../components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import { Input } from "../components/ui/input";
 import Logo from "../components/Logo";
+import PresenceBar from "../components/PresenceBar";
 import TableNode from "../components/TableNode";
+import { usePresence } from "../hooks/usePresence";
 
 const nodeTypes = { table: TableNode };
 const noop = () => {};
 const DEFAULT_TABLE_WIDTH = 340;
+const GUEST_NAME_KEY = "guestViewerName";
+
+function GuestNamePrompt({ open, onSubmit }) {
+  const [name, setName] = useState("");
+
+  const submit = () => {
+    const trimmed = name.trim();
+    if (trimmed) onSubmit(trimmed);
+  };
+
+  return (
+    <Dialog open={open}>
+      <DialogContent onEscapeKeyDown={(e) => e.preventDefault()} onPointerDownOutside={(e) => e.preventDefault()}>
+        <DialogHeader>
+          <DialogTitle>Who's viewing?</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3 p-4">
+          <p className="text-sm text-muted-foreground">
+            Enter a name so other people viewing this diagram can see you're here.
+          </p>
+          <Input
+            autoFocus
+            placeholder="Your name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+            maxLength={40}
+          />
+          <Button onClick={submit} disabled={!name.trim()}>
+            Continue
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export default function PublicViewPage() {
   const { token } = useParams();
@@ -20,6 +60,29 @@ export default function PublicViewPage() {
   const [diagram, setDiagram] = useState(null);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [guestName, setGuestName] = useState(() => localStorage.getItem(GUEST_NAME_KEY) || "");
+  const rfInstance = useRef(null);
+
+  const handleNameSubmit = (name) => {
+    localStorage.setItem(GUEST_NAME_KEY, name);
+    setGuestName(name);
+  };
+
+  const {
+    users: presenceUsers,
+    selfId,
+    followUserId,
+    setFollowUserId,
+    stopFollowing,
+  } = usePresence({ shareToken: token, guestName, enabled: !loading && !!diagram && !!guestName });
+
+  useEffect(() => {
+    if (!followUserId) return;
+    const followed = presenceUsers.find((u) => u.user_id === followUserId);
+    if (followed?.viewport) {
+      rfInstance.current?.setViewport(followed.viewport, { duration: 200 });
+    }
+  }, [followUserId, presenceUsers]);
 
   useEffect(() => {
     let active = true;
@@ -91,6 +154,7 @@ export default function PublicViewPage() {
 
   return (
     <ReactFlowProvider>
+      <GuestNamePrompt open={!guestName} onSubmit={handleNameSubmit} />
       <div className="editor">
         <div className="flex items-center gap-3 border-b border-border bg-[color:var(--bg-elevated)] px-4 py-2">
           <Logo size={24} />
@@ -121,6 +185,7 @@ export default function PublicViewPage() {
               maxZoom={4}
               onlyRenderVisibleElements
               fitView
+              onInit={(instance) => (rfInstance.current = instance)}
             >
               <Background />
               <MiniMap
@@ -129,6 +194,15 @@ export default function PublicViewPage() {
                 nodeColor={(node) => node.data?.table?.color || "var(--accent)"}
                 nodeStrokeColor="var(--border)"
               />
+              <div className="absolute right-3 top-3 z-10">
+                <PresenceBar
+                  users={presenceUsers}
+                  currentUserId={selfId}
+                  followUserId={followUserId}
+                  onFollow={setFollowUserId}
+                  onStopFollowing={stopFollowing}
+                />
+              </div>
             </ReactFlow>
           </div>
         </div>

@@ -123,11 +123,15 @@ export default function EditorPage() {
   const [accessList, setAccessList] = useState([]);
   const [activityList, setActivityList] = useState([]);
   const [isOwner, setIsOwner] = useState(true);
-  const { users: presenceUsers, followUserId, setFollowUserId, stopFollowing, sendViewport } = usePresence(
-    id,
-    authToken,
-    !loading
-  );
+  const {
+    users: presenceUsers,
+    selfId,
+    followUserId,
+    setFollowUserId,
+    stopFollowing,
+    sendViewport,
+    remoteUpdate,
+  } = usePresence({ diagramId: id, token: authToken, enabled: !loading });
   const collaboratorBadge = !isOwner ? (
     <span className="rounded-full border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
       Collaborator
@@ -305,6 +309,22 @@ export default function EditorPage() {
     },
     [dbType, tableWidth, handlers]
   );
+
+  // A collaborator saved while we had this diagram open. We don't have real-time
+  // edit sync (see usePresence), so pull the latest snapshot and replace the
+  // canvas instead of leaving followers staring at a stale one until they hit
+  // refresh. Ignore saves that bounce back from our own writes.
+  useEffect(() => {
+    if (!remoteUpdate || remoteUpdate.by === user?.id) return;
+    client.get(`/diagrams/${id}`).then(({ data }) => {
+      const tables = data.data?.tables || [];
+      const relationships = data.data?.relationships || [];
+      applyModel({ tables, relationships });
+      setDiagramName(data.name);
+      setDbType(data.db_type);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remoteUpdate]);
 
   const undo = useCallback(() => {
     setPast((p) => {
@@ -865,7 +885,7 @@ export default function EditorPage() {
                 <ActivityPanel diagramId={id} />
                 <PresenceBar
                   users={presenceUsers}
-                  currentUserId={user?.id}
+                  currentUserId={selfId}
                   followUserId={followUserId}
                   onFollow={setFollowUserId}
                   onStopFollowing={stopFollowing}

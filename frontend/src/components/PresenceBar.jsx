@@ -11,6 +11,10 @@ export default function PresenceBar({ users, currentUserId, followUserId, onFoll
       </span>
       {others.map((u) => {
         const isFollowing = followUserId === u.user_id;
+        // Guests are anonymous (a typed-in name, no account) — they can follow
+        // other viewers, but nothing stable identifies them for others to
+        // follow back, so they're never a follow target themselves.
+        const followable = !u.is_guest;
         return (
           <div key={u.user_id} className="flex items-center gap-2 rounded px-1 py-0.5 text-xs">
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
@@ -18,20 +22,23 @@ export default function PresenceBar({ users, currentUserId, followUserId, onFoll
             </span>
             <span className="flex-1 truncate" title={u.email}>
               {u.email}
+              {u.is_guest ? " (viewer)" : ""}
             </span>
-            <button
-              className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px] uppercase transition-colors ${
-                isFollowing
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
-              }`}
-              title={isFollowing ? "Stop following" : `Follow ${u.email}`}
-              onClick={() => (isFollowing ? onStopFollowing() : onFollow(u.user_id))}
-              disabled={!u.viewport}
-            >
-              {isFollowing ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-              {isFollowing ? "Stop" : "Follow"}
-            </button>
+            {followable && (
+              <button
+                className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px] uppercase transition-colors ${
+                  isFollowing
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                }`}
+                title={isFollowing ? "Stop following" : `Follow ${u.email}`}
+                onClick={() => (isFollowing ? onStopFollowing() : onFollow(u.user_id))}
+                disabled={!u.viewport}
+              >
+                {isFollowing ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                {isFollowing ? "Stop" : "Follow"}
+              </button>
+            )}
           </div>
         );
       })}

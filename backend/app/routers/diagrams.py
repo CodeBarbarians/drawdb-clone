@@ -7,6 +7,7 @@ from .. import models, schemas
 from ..auth import get_current_user
 from ..database import get_db
 from ..models import utcnow
+from .presence import manager
 
 router = APIRouter(prefix="/diagrams", tags=["diagrams"])
 
@@ -107,7 +108,7 @@ def get_diagram(
 
 
 @router.put("/{diagram_id}", response_model=schemas.DiagramOut)
-def update_diagram(
+async def update_diagram(
     diagram_id: str,
     payload: schemas.DiagramUpdate,
     db: Session = Depends(get_db),
@@ -124,6 +125,7 @@ def update_diagram(
         _record_access(db, diagram.id, user.id)
     if "data" in changes:
         _record_activity(db, diagram, user, before_data)
+        await manager.broadcast_update(diagram.id, user.id)
     diagram.is_owner = is_owner
     return diagram
 
