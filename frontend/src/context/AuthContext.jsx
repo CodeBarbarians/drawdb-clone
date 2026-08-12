@@ -27,8 +27,8 @@ export function AuthProvider({ children }) {
     persist(data.access_token, data.user);
   }, []);
 
-  const register = useCallback(async (email, password) => {
-    const { data } = await client.post("/auth/register", { email, password });
+  const register = useCallback(async (username, email, password) => {
+    const { data } = await client.post("/auth/register", { username, email, password });
     persist(data.access_token, data.user);
   }, []);
 
@@ -39,8 +39,17 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
+  // Used after an OAuth redirect (Google/GitHub) hands back a bare token —
+  // fetch the profile it belongs to before storing the session.
+  const completeOAuthLogin = useCallback(async (nextToken) => {
+    localStorage.setItem("token", nextToken);
+    setToken(nextToken);
+    const { data } = await client.get("/auth/me");
+    persist(nextToken, data);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout }}>
+    <AuthContext.Provider value={{ user, token, login, register, logout, completeOAuthLogin }}>
       {children}
     </AuthContext.Provider>
   );

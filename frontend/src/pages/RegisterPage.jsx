@@ -10,6 +10,7 @@ export default function RegisterPage() {
   const { register } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -21,7 +22,7 @@ export default function RegisterPage() {
     setError("");
     setLoading(true);
     try {
-      await register(email, password);
+      await register(username, email, password);
       navigate(returnTo || "/");
     } catch (err) {
       setError(err.response?.data?.detail || "Registration failed");
@@ -39,6 +40,19 @@ export default function RegisterPage() {
         </div>
         <p className="auth-card__subtitle">Create an account</p>
         {error && <div className="auth-card__error">{error}</div>}
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="username">Username</Label>
+          <Input
+            id="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            minLength={2}
+            maxLength={50}
+            pattern="[a-zA-Z0-9_.\-]+"
+            title="Letters, numbers, underscore, dot, or hyphen"
+            required
+          />
+        </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="email">Email</Label>
           <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />

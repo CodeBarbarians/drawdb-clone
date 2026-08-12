@@ -20,6 +20,9 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    username: Mapped[str | None] = mapped_column(String(50), unique=True, index=True, nullable=True)
+    # OAuth (Google/GitHub) accounts get a random, never-shared value here since
+    # they don't set a password — keeps the column NOT NULL, no schema split needed.
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 

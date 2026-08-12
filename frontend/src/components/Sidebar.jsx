@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeftRight, ChevronDown, Eye, EyeOff, Lock, Plus, Search, Trash2, Unlock } from "lucide-react";
 
 import { Button } from "./ui/button";
@@ -225,6 +225,10 @@ function RelationshipRow({ rel, tables, expanded, onToggleExpand, onUpdateRelati
   );
 }
 
+const MIN_SIDEBAR_WIDTH = 240;
+const MAX_SIDEBAR_WIDTH = 640;
+const DEFAULT_SIDEBAR_WIDTH = 320;
+
 export default function Sidebar({
   tables,
   relationships,
@@ -248,16 +252,58 @@ export default function Sidebar({
   const [expandedId, setExpandedId] = useState(null);
   const [expandedRelId, setExpandedRelId] = useState(null);
   const [relDialogOpen, setRelDialogOpen] = useState(false);
+  const [width, setWidth] = useState(() => {
+    const stored = Number(localStorage.getItem("sidebarWidth"));
+    return stored >= MIN_SIDEBAR_WIDTH && stored <= MAX_SIDEBAR_WIDTH ? stored : DEFAULT_SIDEBAR_WIDTH;
+  });
+  const resizing = useRef(false);
   const filtered = tables.filter((t) => t.name.toLowerCase().includes(search.toLowerCase()));
+
+  const handleResizeStart = useCallback(
+    (e) => {
+      e.preventDefault();
+      resizing.current = true;
+      const startX = e.clientX;
+      const startWidth = width;
+
+      const handleMove = (moveEvent) => {
+        if (!resizing.current) return;
+        const next = startWidth + (moveEvent.clientX - startX);
+        setWidth(Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, next)));
+      };
+      const handleUp = () => {
+        resizing.current = false;
+        document.removeEventListener("mousemove", handleMove);
+        document.removeEventListener("mouseup", handleUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+
+      document.addEventListener("mousemove", handleMove);
+      document.addEventListener("mouseup", handleUp);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    },
+    [width]
+  );
+
+  useEffect(() => {
+    localStorage.setItem("sidebarWidth", String(width));
+  }, [width]);
 
   return (
     <div
       className={
         detached
-          ? "flex h-[calc(100%-24px)] w-80 flex-col rounded-lg border border-border bg-[color:var(--bg-elevated)] shadow-xl"
-          : "flex h-full w-80 flex-col border-r border-border bg-[color:var(--bg-elevated)]"
+          ? "relative flex h-[calc(100%-24px)] flex-col rounded-lg border border-border bg-[color:var(--bg-elevated)] shadow-xl"
+          : "relative flex h-full flex-col border-r border-border bg-[color:var(--bg-elevated)]"
       }
+      style={{ width }}
     >
+      <div
+        className="absolute right-0 top-0 z-10 h-full w-1.5 -translate-x-1/2 cursor-col-resize touch-none hover:bg-[color:var(--accent)]/40"
+        onMouseDown={handleResizeStart}
+      />
       <Tabs defaultValue="tables" className="flex h-full flex-col">
         <TabsList className="px-2 pt-2">
           <TabsTrigger value="tables">Tables ({tables.length})</TabsTrigger>

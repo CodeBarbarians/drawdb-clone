@@ -77,12 +77,15 @@ export default function DashboardPage() {
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" title={user?.email}>
+              <Button variant="ghost" size="icon" title={user?.username || user?.email}>
                 <User className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>{user?.email}</DropdownMenuLabel>
+              <DropdownMenuLabel className="flex flex-col gap-0.5 normal-case tracking-normal">
+                <span className="truncate font-sans text-xs font-semibold text-foreground">{user?.username || user?.email}</span>
+                {user?.username && <span className="truncate text-[9px] text-muted-foreground">{user.email}</span>}
+              </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={logout}>Logout</DropdownMenuItem>
             </DropdownMenuContent>

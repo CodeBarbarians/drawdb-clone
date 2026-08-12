@@ -131,13 +131,16 @@ export default function MenuBar({
           <DropdownMenuTrigger asChild>
             <button
               className="rounded p-1 text-muted-foreground outline-none hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
-              title={user?.email}
+              title={user?.username || user?.email}
             >
               <User className="h-4 w-4" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuLabel>{user?.email}</DropdownMenuLabel>
+            <DropdownMenuLabel className="flex flex-col gap-0.5 normal-case tracking-normal">
+              <span className="truncate font-sans text-xs font-semibold text-foreground">{user?.username || user?.email}</span>
+              {user?.username && <span className="truncate text-[9px] text-muted-foreground">{user.email}</span>}
+            </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onLogout}>Logout</DropdownMenuItem>
           </DropdownMenuContent>

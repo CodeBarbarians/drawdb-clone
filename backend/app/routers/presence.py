@@ -20,12 +20,19 @@ class ConnectionManager:
         self.rooms: dict[str, dict[WebSocket, dict]] = {}
 
     async def connect(
-        self, diagram_id: str, websocket: WebSocket, key, label: str, is_guest: bool = False
+        self,
+        diagram_id: str,
+        websocket: WebSocket,
+        key,
+        label: str,
+        is_guest: bool = False,
+        username: str | None = None,
     ) -> None:
         await websocket.accept()
         self.rooms.setdefault(diagram_id, {})[websocket] = {
             "user_id": key,
             "email": label,
+            "username": username,
             "viewport": None,
             "is_guest": is_guest,
         }
@@ -56,6 +63,7 @@ class ConnectionManager:
                 {
                     "user_id": info["user_id"],
                     "email": info["email"],
+                    "username": info["username"],
                     "viewport": info["viewport"],
                     "is_guest": info["is_guest"],
                 }
@@ -120,7 +128,9 @@ async def diagram_presence(
         await websocket.close(code=4403)
         return
 
-    await manager.connect(diagram_id, websocket, key=user.id, label=user.email, is_guest=False)
+    await manager.connect(
+        diagram_id, websocket, key=user.id, label=user.email, is_guest=False, username=user.username
+    )
     await _run_presence_loop(diagram_id, websocket)
 
 

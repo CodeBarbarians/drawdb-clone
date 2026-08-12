@@ -1,3 +1,4 @@
+import re
 import uuid
 
 from sqlalchemy import inspect, text
@@ -8,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import models
 from .config import settings
 from .database import Base, engine
-from .routers import auth, diagrams, presence, public
+from .routers import auth, diagrams, oauth, presence, public
 
 Base.metadata.create_all(bind=engine)
 
@@ -64,6 +65,29 @@ def _migrate_diagram_id_to_uuid(conn) -> None:
     conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_diagrams_share_token ON diagrams (share_token)"))
 
 
+def _sanitize_username_base(email: str, user_id: int) -> str:
+    base = re.sub(r"[^a-zA-Z0-9_.-]", ".", email.split("@")[0]).strip(".")
+    if len(base) < 2:
+        base = f"user{user_id}"
+    return base[:50]
+
+
+def _backfill_usernames(conn) -> None:
+    # Existing accounts predate the username column — derive one from their
+    # email's local part so they aren't left with a blank display name.
+    taken = {row[0] for row in conn.execute(text("SELECT username FROM users WHERE username IS NOT NULL"))}
+    rows = conn.execute(text("SELECT id, email FROM users WHERE username IS NULL ORDER BY id")).fetchall()
+    for row in rows:
+        base = _sanitize_username_base(row.email, row.id)
+        candidate = base
+        suffix = 2
+        while candidate in taken:
+            candidate = f"{base}{suffix}"[:50]
+            suffix += 1
+        taken.add(candidate)
+        conn.execute(text("UPDATE users SET username = :username WHERE id = :id"), {"username": candidate, "id": row.id})
+
+
 def _run_migrations() -> None:
     # No Alembic in this project — create_all only creates missing tables, it
     # never alters existing ones, so schema changes after the sqlite file
@@ -88,6 +112,15 @@ def _run_migrations() -> None:
                 text("ALTER TABLE diagrams ADD COLUMN share_mode VARCHAR(20) NOT NULL DEFAULT 'readonly'")
             )
 
+    user_columns = {col["name"]: col for col in inspector.get_columns("users")}
+    if "username" not in user_columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE users ADD COLUMN username VARCHAR(50)"))
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users (username)"))
+
+    with engine.begin() as conn:
+        _backfill_usernames(conn)
+
 
 _run_migrations()
 
@@ -102,6 +135,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(oauth.router)
 app.include_router(diagrams.router)
 app.include_router(public.router)
 app.include_router(presence.router)
