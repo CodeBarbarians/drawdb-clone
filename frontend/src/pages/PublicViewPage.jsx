@@ -74,6 +74,7 @@ export default function PublicViewPage() {
     followUserId,
     setFollowUserId,
     stopFollowing,
+    remoteUpdate,
   } = usePresence({ shareToken: token, guestName, enabled: !loading && !!diagram && !!guestName });
 
   useEffect(() => {
@@ -83,6 +84,15 @@ export default function PublicViewPage() {
       rfInstance.current?.setViewport(followed.viewport, { duration: 200 });
     }
   }, [followUserId, presenceUsers]);
+
+  // Someone with edit access saved while we were viewing. This page has no
+  // account of its own to filter out self-saves (view-only visitors can't
+  // edit), so any remoteUpdate here is by definition someone else's — pull
+  // the fresh snapshot instead of leaving the canvas stale until a refresh.
+  useEffect(() => {
+    if (!remoteUpdate) return;
+    client.get(`/public/diagrams/${token}`).then(({ data }) => setDiagram(data));
+  }, [remoteUpdate, token]);
 
   useEffect(() => {
     let active = true;
