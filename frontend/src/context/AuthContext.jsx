@@ -48,8 +48,17 @@ export function AuthProvider({ children }) {
     persist(nextToken, data);
   }, []);
 
+  const updateUsername = useCallback(async (username) => {
+    const { data } = await client.patch("/auth/me", { username });
+    localStorage.setItem("user", JSON.stringify(data));
+    setUser(data);
+    return data;
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, completeOAuthLogin }}>
+    <AuthContext.Provider
+      value={{ user, token, login, register, logout, completeOAuthLogin, updateUsername }}
+    >
       {children}
     </AuthContext.Provider>
   );

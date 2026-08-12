@@ -38,19 +38,33 @@ const DropdownMenuSubContent = React.forwardRef(({ className, ...props }, ref) =
 ));
 DropdownMenuSubContent.displayName = DropdownMenuPrimitive.SubContent.displayName;
 
-const DropdownMenuContent = React.forwardRef(({ className, sideOffset = 4, ...props }, ref) => (
-  <DropdownMenuPrimitive.Portal>
-    <DropdownMenuPrimitive.Content
-      ref={ref}
-      sideOffset={sideOffset}
-      className={cn(
-        "z-50 min-w-[12rem] overflow-hidden rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md",
-        className
-      )}
-      {...props}
-    />
-  </DropdownMenuPrimitive.Portal>
-));
+const DropdownMenuContent = React.forwardRef(
+  ({ className, sideOffset = 8, showArrow = false, children, ...props }, ref) => (
+    <DropdownMenuPrimitive.Portal>
+      <DropdownMenuPrimitive.Content
+        ref={ref}
+        sideOffset={sideOffset}
+        className={cn(
+          // No overflow-hidden here: it would clip the Arrow below, which is
+          // meant to poke out past this box's edge to point at the trigger.
+          "z-50 min-w-[12rem] rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md [&_[role=menuitem]]:rounded-sm",
+          className
+        )}
+        {...props}
+      >
+        {children}
+        {showArrow && (
+          <DropdownMenuPrimitive.Arrow
+            className="fill-popover"
+            width={14}
+            height={7}
+            style={{ filter: "drop-shadow(0 0 1px var(--border))" }}
+          />
+        )}
+      </DropdownMenuPrimitive.Content>
+    </DropdownMenuPrimitive.Portal>
+  )
+);
 DropdownMenuContent.displayName = DropdownMenuPrimitive.Content.displayName;
 
 const DropdownMenuItem = React.forwardRef(({ className, inset, ...props }, ref) => (

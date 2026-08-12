@@ -42,3 +42,19 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 @router.get("/me", response_model=schemas.UserOut)
 def me(user: models.User = Depends(get_current_user)):
     return user
+
+
+@router.patch("/me", response_model=schemas.UserOut)
+def update_me(
+    payload: schemas.UserUpdate,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    existing = db.query(models.User).filter(models.User.username == payload.username).first()
+    if existing and existing.id != user.id:
+        raise HTTPException(status_code=400, detail="Username already taken")
+
+    user.username = payload.username
+    db.commit()
+    db.refresh(user)
+    return user

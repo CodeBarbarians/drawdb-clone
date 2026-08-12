@@ -9,6 +9,10 @@ class UserCreate(BaseModel):
     password: str = Field(min_length=8)
 
 
+class UserUpdate(BaseModel):
+    username: str = Field(min_length=2, max_length=50, pattern=r"^[a-zA-Z0-9_.-]+$")
+
+
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

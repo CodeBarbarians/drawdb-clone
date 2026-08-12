@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Moon, Sun, Trash2, User } from "lucide-react";
 import client from "../api/client";
 import Logo from "../components/Logo";
+import ProfileDrawer from "../components/ProfileDrawer";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import {
@@ -22,6 +23,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
+  const [showProfile, setShowProfile] = useState(false);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -81,11 +83,13 @@ export default function DashboardPage() {
                 <User className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" showArrow>
               <DropdownMenuLabel className="flex flex-col gap-0.5 normal-case tracking-normal">
                 <span className="truncate font-sans text-xs font-semibold text-foreground">{user?.username || user?.email}</span>
                 {user?.username && <span className="truncate text-[9px] text-muted-foreground">{user.email}</span>}
               </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setShowProfile(true)}>Profile</DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={logout}>Logout</DropdownMenuItem>
             </DropdownMenuContent>
@@ -135,6 +139,8 @@ export default function DashboardPage() {
           ))}
         </div>
       )}
+
+      <ProfileDrawer open={showProfile} onOpenChange={setShowProfile} />
     </div>
   );
 }

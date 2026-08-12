@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Key, MoreHorizontal, Trash2 } from "lucide-react";
 
 import { Button } from "./ui/button";
@@ -46,9 +47,30 @@ export function ColumnOptionsPopover({
   disabled = false,
   showCoreFields = false,
 }) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef(null);
+
+  // React Flow's canvas pans/zooms via d3-zoom, which calls
+  // stopImmediatePropagation() on pointerdown before it can bubble up to the
+  // document-level listener Radix's Popover normally relies on to detect an
+  // outside click. Clicking anywhere on the canvas — rather than just the
+  // trigger — would otherwise never close this menu. A capture-phase
+  // listener on document runs before that bubble-phase stop, so it still
+  // sees the click.
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event) => {
+      if (triggerRef.current?.contains(event.target)) return;
+      if (event.target.closest?.("[data-radix-popper-content-wrapper]")) return;
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [open]);
+
   return (
-    <Popover>
-      <PopoverTrigger asChild>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild ref={triggerRef}>
         <button
           disabled={disabled}
           className={`nodrag flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 ${triggerClassName}`}

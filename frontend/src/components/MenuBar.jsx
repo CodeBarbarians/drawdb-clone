@@ -136,7 +136,7 @@ export default function MenuBar({
               <User className="h-4 w-4" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" showArrow>
             <DropdownMenuLabel className="flex flex-col gap-0.5 normal-case tracking-normal">
               <span className="truncate font-sans text-xs font-semibold text-foreground">{user?.username || user?.email}</span>
               {user?.username && <span className="truncate text-[9px] text-muted-foreground">{user.email}</span>}
