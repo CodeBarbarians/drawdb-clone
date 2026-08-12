@@ -20,5 +20,13 @@ class Settings(BaseSettings):
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
+    @property
+    def sqlalchemy_database_url(self) -> str:
+        # Render (and Heroku-style hosts) hand out "postgres://", but
+        # SQLAlchemy 1.4+ only recognizes the "postgresql://" scheme.
+        if self.database_url.startswith("postgres://"):
+            return "postgresql://" + self.database_url[len("postgres://"):]
+        return self.database_url
+
 
 settings = Settings()
