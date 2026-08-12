@@ -52,6 +52,17 @@ function tableToSQL(dbType, table) {
   return `CREATE TABLE ${quoteIdent(dbType, table.name)} (\n${body}\n);`;
 }
 
+function referentialActionClause(rel) {
+  const parts = [];
+  if (rel.updateConstraint && rel.updateConstraint !== "No action") {
+    parts.push(`ON UPDATE ${rel.updateConstraint.toUpperCase()}`);
+  }
+  if (rel.deleteConstraint && rel.deleteConstraint !== "No action") {
+    parts.push(`ON DELETE ${rel.deleteConstraint.toUpperCase()}`);
+  }
+  return parts.length > 0 ? ` ${parts.join(" ")}` : "";
+}
+
 function relationshipToSQL(dbType, rel, tablesById) {
   const targetTable = tablesById.get(rel.targetTableId);
   const sourceTable = tablesById.get(rel.sourceTableId);
@@ -66,10 +77,11 @@ function relationshipToSQL(dbType, rel, tablesById) {
   const targetColIdent = quoteIdent(dbType, targetColumn.name);
   const sourceTableIdent = quoteIdent(dbType, sourceTable.name);
   const sourceColIdent = quoteIdent(dbType, sourceColumn.name);
+  const actionClause = referentialActionClause(rel);
 
   return {
-    inline: `  FOREIGN KEY (${targetColIdent}) REFERENCES ${sourceTableIdent}(${sourceColIdent})`,
-    alter: `ALTER TABLE ${targetTableIdent} ADD CONSTRAINT ${constraintName} FOREIGN KEY (${targetColIdent}) REFERENCES ${sourceTableIdent}(${sourceColIdent});`,
+    inline: `  FOREIGN KEY (${targetColIdent}) REFERENCES ${sourceTableIdent}(${sourceColIdent})${actionClause}`,
+    alter: `ALTER TABLE ${targetTableIdent} ADD CONSTRAINT ${constraintName} FOREIGN KEY (${targetColIdent}) REFERENCES ${sourceTableIdent}(${sourceColIdent})${actionClause};`,
     targetTableId: rel.targetTableId,
   };
 }

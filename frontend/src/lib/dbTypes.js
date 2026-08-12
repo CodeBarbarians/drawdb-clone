@@ -73,3 +73,28 @@ export function makeTable(overrides = {}) {
     ...overrides,
   };
 }
+
+export const CARDINALITIES = ["one_to_one", "one_to_many", "many_to_one"];
+
+export const CARDINALITY_LABELS = {
+  one_to_one: "One to one",
+  one_to_many: "One to many",
+  many_to_one: "Many to one",
+};
+
+export const CONSTRAINTS = ["No action", "Restrict", "Cascade", "Set null", "Set default"];
+
+// Mirrors how most ER tools infer cardinality from key flags: a unique/PK
+// column can hold at most one matching row on its side of the relationship.
+export function inferCardinality(sourceColumn, targetColumn) {
+  const sourceUnique = !!(sourceColumn?.unique || sourceColumn?.pk);
+  const targetUnique = !!(targetColumn?.unique || targetColumn?.pk);
+  if (sourceUnique && targetUnique) return "one_to_one";
+  if (sourceUnique && !targetUnique) return "one_to_many";
+  if (!sourceUnique && targetUnique) return "many_to_one";
+  return "one_to_many";
+}
+
+export function defaultRelationshipName(sourceTable, sourceColumn, targetTable) {
+  return `fk_${targetTable?.name || "table"}_${sourceColumn?.name || "id"}_${sourceTable?.name || "table"}`;
+}

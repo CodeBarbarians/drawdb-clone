@@ -26,20 +26,21 @@ import { generateSQL } from "../lib/sqlExport";
 import { generateDBML } from "../lib/dbmlExport";
 import { computeProblems } from "../lib/problems";
 import { autoLayout } from "../lib/autoLayout";
-import { makeColumn, makeTable, nextId } from "../lib/dbTypes";
+import { defaultRelationshipName, inferCardinality, makeColumn, makeTable, nextId } from "../lib/dbTypes";
 
 const nodeTypes = { table: TableNode };
 const HISTORY_LIMIT = 50;
 const DEFAULT_ZOOM_SPEED = 1.6;
+const DEFAULT_TABLE_WIDTH = 340;
 
-function tableToNode(table, dbType, handlers) {
+function tableToNode(table, dbType, tableWidth, handlers) {
   return {
     id: table.id,
     type: "table",
     position: table.position || { x: 100, y: 100 },
     hidden: !!table.hidden,
     draggable: !table.locked,
-    data: { table, dbType, ...handlers },
+    data: { table, dbType, tableWidth, ...handlers },
   };
 }
 
@@ -51,6 +52,12 @@ function relationshipToEdge(rel) {
     target: rel.targetTableId,
     targetHandle: rel.targetColumnId,
     markerEnd: { type: "arrowclosed" },
+    data: {
+      name: rel.name,
+      cardinality: rel.cardinality,
+      updateConstraint: rel.updateConstraint || "No action",
+      deleteConstraint: rel.deleteConstraint || "No action",
+    },
   };
 }
 
@@ -99,6 +106,11 @@ export default function EditorPage() {
   const [zoomSpeed, setZoomSpeed] = useState(() => {
     const stored = parseFloat(localStorage.getItem("zoomSpeed"));
     return Number.isFinite(stored) && stored > 1 ? stored : DEFAULT_ZOOM_SPEED;
+  });
+  const [showTableWidthSettings, setShowTableWidthSettings] = useState(false);
+  const [tableWidth, setTableWidth] = useState(() => {
+    const stored = parseInt(localStorage.getItem("tableWidth"), 10);
+    return Number.isFinite(stored) && stored >= 220 ? stored : DEFAULT_TABLE_WIDTH;
   });
   const [globalLocked, setGlobalLocked] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
@@ -207,7 +219,7 @@ export default function EditorPage() {
       const relationships = data.data?.relationships || [];
       setDiagramName(data.name);
       setDbType(data.db_type);
-      setNodes(tables.map((t) => tableToNode(t, data.db_type, handlers)));
+      setNodes(tables.map((t) => tableToNode(t, data.db_type, tableWidth, handlers)));
       setEdges(relationships.map(relationshipToEdge));
       setPast([]);
       setFuture([]);
@@ -227,6 +239,10 @@ export default function EditorPage() {
     setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, globalLocked } })));
   }, [globalLocked]);
 
+  useEffect(() => {
+    setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, tableWidth } })));
+  }, [tableWidth]);
+
   // Passed to <NodeInternalsSync> below, which does the actual re-measuring
   // (that hook only works inside the ReactFlow tree, not here).
   const columnCountsKey = nodes.map((n) => `${n.id}:${n.data.table.columns.length}`).join("|");
@@ -245,6 +261,10 @@ export default function EditorPage() {
         sourceColumnId: e.sourceHandle,
         targetTableId: e.target,
         targetColumnId: e.targetHandle,
+        name: e.data?.name || "",
+        cardinality: e.data?.cardinality || "one_to_many",
+        updateConstraint: e.data?.updateConstraint || "No action",
+        deleteConstraint: e.data?.deleteConstraint || "No action",
       })),
     }),
     [nodes, edges]
@@ -256,10 +276,10 @@ export default function EditorPage() {
 
   const applyModel = useCallback(
     (model) => {
-      setNodes(model.tables.map((t) => tableToNode(t, dbType, handlers)));
+      setNodes(model.tables.map((t) => tableToNode(t, dbType, tableWidth, handlers)));
       setEdges(model.relationships.map(relationshipToEdge));
     },
-    [dbType, handlers]
+    [dbType, tableWidth, handlers]
   );
 
   const undo = useCallback(() => {
@@ -293,15 +313,56 @@ export default function EditorPage() {
   const onConnect = useCallback(
     (params) => {
       pushHistory();
-      setEdges((eds) => addEdge({ ...params, markerEnd: { type: "arrowclosed" } }, eds));
+      const sourceTable = nodes.find((n) => n.id === params.source)?.data.table;
+      const targetTable = nodes.find((n) => n.id === params.target)?.data.table;
+      const sourceColumn = sourceTable?.columns.find((c) => c.id === params.sourceHandle);
+      const targetColumn = targetTable?.columns.find((c) => c.id === params.targetHandle);
+      setEdges((eds) =>
+        addEdge(
+          {
+            ...params,
+            markerEnd: { type: "arrowclosed" },
+            data: {
+              name: defaultRelationshipName(sourceTable, sourceColumn, targetTable),
+              cardinality: inferCardinality(sourceColumn, targetColumn),
+              updateConstraint: "No action",
+              deleteConstraint: "No action",
+            },
+          },
+          eds
+        )
+      );
+    },
+    [pushHistory, nodes]
+  );
+
+  const addRelationship = useCallback(
+    ({ sourceTableId, sourceColumnId, targetTableId, targetColumnId, name, cardinality, updateConstraint, deleteConstraint }) => {
+      pushHistory();
+      setEdges((eds) => [
+        ...eds,
+        {
+          id: nextId("rel"),
+          source: sourceTableId,
+          sourceHandle: sourceColumnId,
+          target: targetTableId,
+          targetHandle: targetColumnId,
+          markerEnd: { type: "arrowclosed" },
+          data: { name, cardinality, updateConstraint, deleteConstraint },
+        },
+      ]);
     },
     [pushHistory]
   );
 
+  const updateRelationship = useCallback((relId, patch) => {
+    setEdges((eds) => eds.map((e) => (e.id === relId ? { ...e, data: { ...e.data, ...patch } } : e)));
+  }, []);
+
   const addTable = () => {
     pushHistory();
     const table = makeTable({ position: { x: 80 + nodes.length * 40, y: 80 + nodes.length * 30 } });
-    setNodes((nds) => [...nds, tableToNode(table, dbType, handlers)]);
+    setNodes((nds) => [...nds, tableToNode(table, dbType, tableWidth, handlers)]);
   };
 
   const saveModel = useCallback(
@@ -355,7 +416,7 @@ export default function EditorPage() {
   const handleImportApply = (model, targetDbType) => {
     pushHistory();
     setDbType(targetDbType);
-    setNodes(model.tables.map((t) => tableToNode(t, targetDbType, handlers)));
+    setNodes(model.tables.map((t) => tableToNode(t, targetDbType, tableWidth, handlers)));
     setEdges(model.relationships.map(relationshipToEdge));
     setImportOpen(false);
     setImportPreset(null);
@@ -437,6 +498,12 @@ export default function EditorPage() {
     localStorage.setItem("zoomSpeed", String(clamped));
   };
 
+  const updateTableWidth = (value) => {
+    const clamped = Math.min(Math.max(Math.round(value), 220), 640);
+    setTableWidth(clamped);
+    localStorage.setItem("tableWidth", String(clamped));
+  };
+
   const deleteRelationship = (relId) => {
     pushHistory();
     setEdges((eds) => eds.filter((e) => e.id !== relId));
@@ -463,6 +530,7 @@ export default function EditorPage() {
           columns: n.data.table.columns.map((c) => ({ ...c, id: nextId("col") })),
         },
         dbType,
+        tableWidth,
         handlers
       )
     );
@@ -571,6 +639,7 @@ export default function EditorPage() {
           })
         }
         onShowZoomSettings={() => setShowZoomSettings(true)}
+        onShowTableWidthSettings={() => setShowTableWidthSettings(true)}
         onAutoArrange={handleAutoArrange}
         globalLocked={globalLocked}
         onToggleGlobalLock={() => setGlobalLocked((v) => !v)}
@@ -593,6 +662,8 @@ export default function EditorPage() {
               onToggleTableVisibility={toggleTableVisibility}
               onToggleTableLock={toggleTableLock}
               onDeleteTable={deleteTable}
+              onAddRelationship={addRelationship}
+              onUpdateRelationship={updateRelationship}
               onDeleteRelationship={deleteRelationship}
               onUpdateTable={updateTable}
               onAddColumn={addColumn}
@@ -762,6 +833,40 @@ export default function EditorPage() {
             </div>
             <p className="font-mono text-[11px] text-muted-foreground">Suggested: {DEFAULT_ZOOM_SPEED}×</p>
             <Button size="sm" variant="outline" onClick={() => updateZoomSpeed(DEFAULT_ZOOM_SPEED)}>
+              Reset to default
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showTableWidthSettings} onOpenChange={setShowTableWidthSettings}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Table Width</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 p-4">
+            <p className="text-xs text-muted-foreground">Controls how wide table nodes are drawn on the canvas.</p>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min="220"
+                max="640"
+                step="10"
+                value={tableWidth}
+                onChange={(e) => updateTableWidth(parseInt(e.target.value, 10))}
+                className="flex-1 accent-[color:var(--accent)]"
+              />
+              <input
+                type="number"
+                min="220"
+                max="640"
+                step="10"
+                value={tableWidth}
+                onChange={(e) => updateTableWidth(parseInt(e.target.value, 10) || DEFAULT_TABLE_WIDTH)}
+                className="h-8 w-16 rounded-md border border-border bg-background px-2 text-xs text-foreground"
+              />
+            </div>
+            <p className="font-mono text-[11px] text-muted-foreground">Suggested: {DEFAULT_TABLE_WIDTH}px</p>
+            <Button size="sm" variant="outline" onClick={() => updateTableWidth(DEFAULT_TABLE_WIDTH)}>
               Reset to default
             </Button>
           </div>

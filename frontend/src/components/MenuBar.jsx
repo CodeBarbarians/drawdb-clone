@@ -79,6 +79,7 @@ export default function MenuBar({
   autoSave,
   onToggleAutoSave,
   onShowZoomSettings,
+  onShowTableWidthSettings,
   onAutoArrange,
   globalLocked,
   onToggleGlobalLock,
@@ -230,7 +231,7 @@ export default function MenuBar({
         <MenuButton label="Settings">
           <DropdownMenuItem onClick={onToggleAutoSave}>{autoSave ? "Disable" : "Enable"} autosave</DropdownMenuItem>
           <DropdownMenuItem onClick={onShowZoomSettings}>Zoom speed…</DropdownMenuItem>
-          <DropdownMenuItem disabled>Table width</DropdownMenuItem>
+          <DropdownMenuItem onClick={onShowTableWidthSettings}>Table width…</DropdownMenuItem>
           <DropdownMenuItem disabled>Language</DropdownMenuItem>
         </MenuButton>
 

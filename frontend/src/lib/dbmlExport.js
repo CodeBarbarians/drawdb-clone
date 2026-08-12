@@ -21,6 +21,17 @@ function tableToDBML(table) {
   return `Table ${table.name} {\n${body}\n}`;
 }
 
+function referentialActionSettings(rel) {
+  const parts = [];
+  if (rel.updateConstraint && rel.updateConstraint !== "No action") {
+    parts.push(`update: ${rel.updateConstraint.toLowerCase()}`);
+  }
+  if (rel.deleteConstraint && rel.deleteConstraint !== "No action") {
+    parts.push(`delete: ${rel.deleteConstraint.toLowerCase()}`);
+  }
+  return parts.length > 0 ? ` [${parts.join(", ")}]` : "";
+}
+
 function relationshipToDBML(rel, tablesById) {
   const targetTable = tablesById.get(rel.targetTableId);
   const sourceTable = tablesById.get(rel.sourceTableId);
@@ -30,7 +41,7 @@ function relationshipToDBML(rel, tablesById) {
   const sourceColumn = sourceTable.columns.find((c) => c.id === rel.sourceColumnId);
   if (!targetColumn || !sourceColumn) return null;
 
-  return `Ref: ${targetTable.name}.${targetColumn.name} > ${sourceTable.name}.${sourceColumn.name}`;
+  return `Ref: ${targetTable.name}.${targetColumn.name} > ${sourceTable.name}.${sourceColumn.name}${referentialActionSettings(rel)}`;
 }
 
 export function generateDBML(diagram) {

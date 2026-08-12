@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { ChevronDown, Eye, EyeOff, Lock, Plus, Search, Trash2, Unlock } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, Eye, EyeOff, Lock, Plus, Search, Trash2, Unlock } from "lucide-react";
 
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { ColumnOptionsPopover, NullableToggle, PkToggle } from "./ColumnControls";
-import { DB_TYPES } from "../lib/dbTypes";
+import RelationshipDialog from "./RelationshipDialog";
+import { CARDINALITIES, CARDINALITY_LABELS, CONSTRAINTS, DB_TYPES } from "../lib/dbTypes";
 
 function TableRow({
   table,
@@ -113,6 +114,117 @@ function TableRow({
   );
 }
 
+function RelationshipRow({ rel, tables, expanded, onToggleExpand, onUpdateRelationship, onDeleteRelationship }) {
+  const source = tables.find((t) => t.id === rel.sourceTableId);
+  const target = tables.find((t) => t.id === rel.targetTableId);
+  const sourceCol = source?.columns.find((c) => c.id === rel.sourceColumnId);
+  const targetCol = target?.columns.find((c) => c.id === rel.targetColumnId);
+  const label = rel.name || `${target?.name || "?"}.${targetCol?.name || "?"} → ${source?.name || "?"}.${sourceCol?.name || "?"}`;
+
+  const swap = () => {
+    onUpdateRelationship(rel.id, {
+      sourceTableId: rel.targetTableId,
+      sourceColumnId: rel.targetColumnId,
+      targetTableId: rel.sourceTableId,
+      targetColumnId: rel.sourceColumnId,
+    });
+  };
+
+  return (
+    <div className="rounded-md border border-border bg-[color:var(--bg-panel)]">
+      <div className="flex items-center gap-2 px-2 py-1.5 text-sm">
+        <button className="flex-1 truncate text-left font-mono text-[11px]" onClick={() => onToggleExpand(rel.id)}>
+          {label}
+        </button>
+        <button
+          className="text-muted-foreground hover:text-destructive"
+          title="Delete relationship"
+          onClick={() => onDeleteRelationship(rel.id)}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+        <button className="text-muted-foreground hover:text-foreground" onClick={() => onToggleExpand(rel.id)}>
+          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="flex flex-col gap-2 border-t border-border p-2">
+          <label className="flex items-center gap-2 text-xs">
+            <span className="font-mono uppercase tracking-wider text-muted-foreground">Name:</span>
+            <Input
+              className="h-7 flex-1 text-xs"
+              value={rel.name || ""}
+              onChange={(e) => onUpdateRelationship(rel.id, { name: e.target.value })}
+            />
+          </label>
+
+          <div className="flex items-center gap-2 rounded-md bg-[color:var(--bg-elevated)] px-2 py-1.5 font-mono text-[11px]">
+            <span className="flex-1 truncate">
+              {source?.name || "?"}.{sourceCol?.name || "?"} → {target?.name || "?"}.{targetCol?.name || "?"}
+            </span>
+            <button className="text-muted-foreground hover:text-foreground" title="Swap source/target" onClick={swap}>
+              <ArrowLeftRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <label className="flex items-center gap-2 text-xs">
+            <span className="w-24 shrink-0 font-mono uppercase tracking-wider text-muted-foreground">Cardinality:</span>
+            <Select value={rel.cardinality} onValueChange={(v) => onUpdateRelationship(rel.id, { cardinality: v })}>
+              <SelectTrigger className="h-7 flex-1 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CARDINALITIES.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {CARDINALITY_LABELS[c]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+
+          <label className="flex items-center gap-2 text-xs">
+            <span className="w-24 shrink-0 font-mono uppercase tracking-wider text-muted-foreground">On update:</span>
+            <Select value={rel.updateConstraint} onValueChange={(v) => onUpdateRelationship(rel.id, { updateConstraint: v })}>
+              <SelectTrigger className="h-7 flex-1 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CONSTRAINTS.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+
+          <label className="flex items-center gap-2 text-xs">
+            <span className="w-24 shrink-0 font-mono uppercase tracking-wider text-muted-foreground">On delete:</span>
+            <Select value={rel.deleteConstraint} onValueChange={(v) => onUpdateRelationship(rel.id, { deleteConstraint: v })}>
+              <SelectTrigger className="h-7 flex-1 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CONSTRAINTS.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+
+          <Button size="sm" variant="destructive" onClick={() => onDeleteRelationship(rel.id)}>
+            <Trash2 className="h-3.5 w-3.5" /> Delete relationship
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Sidebar({
   tables,
   relationships,
@@ -124,6 +236,8 @@ export default function Sidebar({
   onToggleTableVisibility,
   onToggleTableLock,
   onDeleteTable,
+  onAddRelationship,
+  onUpdateRelationship,
   onDeleteRelationship,
   onUpdateTable,
   onAddColumn,
@@ -132,6 +246,8 @@ export default function Sidebar({
 }) {
   const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState(null);
+  const [expandedRelId, setExpandedRelId] = useState(null);
+  const [relDialogOpen, setRelDialogOpen] = useState(false);
   const filtered = tables.filter((t) => t.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
@@ -159,8 +275,13 @@ export default function Sidebar({
                 className="h-8 pl-7 text-xs"
               />
             </div>
-            <Button size="sm" onClick={onAddTable}>
-              + Table
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0 border-dashed text-muted-foreground hover:text-foreground"
+              onClick={onAddTable}
+            >
+              <Plus className="h-3.5 w-3.5" /> Table
             </Button>
           </div>
 
@@ -187,33 +308,35 @@ export default function Sidebar({
           </div>
         </TabsContent>
 
-        <TabsContent value="relationships" className="flex flex-col gap-1 p-3">
-          {relationships.map((rel) => {
-            const source = tables.find((t) => t.id === rel.sourceTableId);
-            const target = tables.find((t) => t.id === rel.targetTableId);
-            const sourceCol = source?.columns.find((c) => c.id === rel.sourceColumnId);
-            const targetCol = target?.columns.find((c) => c.id === rel.targetColumnId);
-            return (
-              <div
+        <TabsContent value="relationships" className="flex flex-col gap-2 p-3">
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full shrink-0 border-dashed text-muted-foreground hover:text-foreground"
+            onClick={() => setRelDialogOpen(true)}
+            disabled={tables.length < 2}
+          >
+            <Plus className="h-3.5 w-3.5" /> Add relationship
+          </Button>
+
+          <div className="flex flex-col gap-1.5">
+            {relationships.map((rel) => (
+              <RelationshipRow
                 key={rel.id}
-                className="group flex items-center gap-2 rounded-md border border-border bg-[color:var(--bg-panel)] px-2 py-1.5 font-mono text-[11px]"
-              >
-                <span className="flex-1 truncate">
-                  {target?.name || "?"}.{targetCol?.name || "?"} → {source?.name || "?"}.{sourceCol?.name || "?"}
-                </span>
-                <button
-                  className="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive"
-                  title="Delete relationship"
-                  onClick={() => onDeleteRelationship(rel.id)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            );
-          })}
-          {relationships.length === 0 && <p className="px-1 py-2 text-xs text-muted-foreground">No relationships yet.</p>}
+                rel={rel}
+                tables={tables}
+                expanded={expandedRelId === rel.id}
+                onToggleExpand={(id) => setExpandedRelId((cur) => (cur === id ? null : id))}
+                onUpdateRelationship={onUpdateRelationship}
+                onDeleteRelationship={onDeleteRelationship}
+              />
+            ))}
+            {relationships.length === 0 && <p className="px-1 py-2 text-xs text-muted-foreground">No relationships yet.</p>}
+          </div>
         </TabsContent>
       </Tabs>
+
+      <RelationshipDialog open={relDialogOpen} onOpenChange={setRelDialogOpen} tables={tables} onSubmit={onAddRelationship} />
     </div>
   );
 }

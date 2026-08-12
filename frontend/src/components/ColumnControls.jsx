@@ -4,6 +4,7 @@ import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Input } from "./ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 export function NullableToggle({ column, onToggle, className = "h-7 w-7", disabled = false }) {
   return (
@@ -35,7 +36,16 @@ export function PkToggle({ column, onToggle, className = "h-7 w-7", disabled = f
   );
 }
 
-export function ColumnOptionsPopover({ table, column, onUpdateColumn, onDeleteColumn, triggerClassName = "", disabled = false }) {
+export function ColumnOptionsPopover({
+  table,
+  column,
+  typeOptions = [],
+  onUpdateColumn,
+  onDeleteColumn,
+  triggerClassName = "",
+  disabled = false,
+  showCoreFields = false,
+}) {
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -47,6 +57,41 @@ export function ColumnOptionsPopover({ table, column, onUpdateColumn, onDeleteCo
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="flex flex-col gap-3">
+        {showCoreFields && (
+          <>
+            <div className="flex flex-col gap-1">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Name</span>
+              <Input
+                className="h-8 text-xs"
+                value={column.name}
+                onChange={(e) => onUpdateColumn(table.id, column.id, { name: e.target.value })}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Type</span>
+              <Select value={column.type} onValueChange={(v) => onUpdateColumn(table.id, column.id, { type: v })}>
+                <SelectTrigger className="h-8 font-mono text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="font-mono text-xs">
+                  {typeOptions.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <label className="flex items-center justify-between text-sm">
+              Not null
+              <Checkbox checked={column.notNull} onCheckedChange={(v) => onUpdateColumn(table.id, column.id, { notNull: !!v })} />
+            </label>
+            <label className="flex items-center justify-between text-sm">
+              Primary key
+              <Checkbox checked={column.pk} onCheckedChange={(v) => onUpdateColumn(table.id, column.id, { pk: !!v })} />
+            </label>
+          </>
+        )}
         <div className="flex flex-col gap-1">
           <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Default</span>
           <Input

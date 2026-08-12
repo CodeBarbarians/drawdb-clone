@@ -1,8 +1,8 @@
 import { memo } from "react";
 import { Handle, Position, useStore } from "reactflow";
-import { Lock, Unlock, X } from "lucide-react";
+import { Key, Lock, Unlock, X } from "lucide-react";
 
-import { ColumnOptionsPopover, NullableToggle, PkToggle } from "./ColumnControls";
+import { ColumnOptionsPopover } from "./ColumnControls";
 import { DB_TYPES } from "../lib/dbTypes";
 
 // Below this zoom level, individual columns are just a few pixels tall and
@@ -19,17 +19,28 @@ function useIsCompact() {
 }
 
 function TableNode({ data }) {
-  const { table, dbType, globalLocked, onUpdateTable, onDeleteTable, onAddColumn, onUpdateColumn, onDeleteColumn, onToggleLock } =
-    data;
+  const {
+    table,
+    dbType,
+    tableWidth,
+    globalLocked,
+    onUpdateTable,
+    onDeleteTable,
+    onAddColumn,
+    onUpdateColumn,
+    onDeleteColumn,
+    onToggleLock,
+  } = data;
   const typeOptions = DB_TYPES[dbType]?.columnTypes || DB_TYPES.postgresql.columnTypes;
   const locked = table.locked || globalLocked;
   const compact = useIsCompact();
+  const widthStyle = tableWidth ? { width: `${tableWidth}px` } : undefined;
 
   if (compact) {
     return (
-      <div className="table-node" style={{ borderLeftColor: table.color }}>
+      <div className="table-node" style={{ borderLeftColor: table.color, ...widthStyle }}>
         <div className="table-node__header">
-          <span className="table-node__name table-node__name--static nodrag">{table.name}</span>
+          <span className="table-node__name table-node__name--static">{table.name}</span>
         </div>
         <div className="table-node__columns">
           {table.columns.map((col) => (
@@ -45,7 +56,7 @@ function TableNode({ data }) {
   }
 
   return (
-    <div className="table-node" style={{ borderLeftColor: table.color }}>
+    <div className="table-node" style={{ borderLeftColor: table.color, ...widthStyle }}>
       <div className="table-node__header">
         <input
           className="table-node__name nodrag"
@@ -74,43 +85,23 @@ function TableNode({ data }) {
         {table.columns.map((col) => (
           <div className="table-node__row" key={col.id}>
             <Handle type="target" position={Position.Left} id={col.id} className="table-node__handle" />
-            <input
-              className="table-node__col-name nodrag"
-              value={col.name}
-              readOnly={locked}
-              onChange={(e) => onUpdateColumn(table.id, col.id, { name: e.target.value })}
-            />
-            <select
-              className="table-node__col-type nodrag"
-              value={col.type}
-              disabled={locked}
-              onChange={(e) => onUpdateColumn(table.id, col.id, { type: e.target.value })}
-            >
-              {typeOptions.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-            <NullableToggle
-              column={col}
-              onToggle={() => onUpdateColumn(table.id, col.id, { notNull: !col.notNull })}
-              className="h-5 w-5 text-[10px]"
-              disabled={locked}
-            />
-            <PkToggle
-              column={col}
-              onToggle={() => onUpdateColumn(table.id, col.id, { pk: !col.pk })}
-              className="h-5 w-5"
-              disabled={locked}
-            />
+            <span className="table-node__col-name table-node__col-name--static" title={col.name}>
+              {col.name}
+            </span>
+            <span className="table-node__col-flag-slot">{col.pk && <Key className="h-3 w-3 text-amber-400" />}</span>
+            <span className="table-node__col-type table-node__col-type--static">{col.type}</span>
+            <span className="table-node__col-flag-slot">
+              {!col.notNull && <span style={{ color: "var(--accent)" }}>?</span>}
+            </span>
             <ColumnOptionsPopover
               table={table}
               column={col}
+              typeOptions={typeOptions}
               onUpdateColumn={onUpdateColumn}
               onDeleteColumn={onDeleteColumn}
               triggerClassName="h-5 w-5"
               disabled={locked}
+              showCoreFields
             />
             <button
               className="table-node__col-delete nodrag"
