@@ -4,6 +4,16 @@ import { Moon, Sun, Trash2, User } from "lucide-react";
 import client from "../api/client";
 import Logo from "../components/Logo";
 import ProfileDrawer from "../components/ProfileDrawer";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import {
@@ -24,6 +34,7 @@ export default function DashboardPage() {
   const [creating, setCreating] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
   const [showProfile, setShowProfile] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState(null);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -56,7 +67,6 @@ export default function DashboardPage() {
   };
 
   const deleteDiagram = async (id) => {
-    if (!confirm("Delete this diagram?")) return;
     await client.delete(`/diagrams/${id}`);
     setDiagrams((prev) => prev.filter((d) => d.id !== id));
   };
@@ -124,7 +134,7 @@ export default function DashboardPage() {
                   title="Delete diagram"
                   onClick={(e) => {
                     e.stopPropagation();
-                    deleteDiagram(d.id);
+                    setPendingDeleteId(d.id);
                   }}
                 >
                   <Trash2 className="h-4 w-4" />
@@ -141,6 +151,28 @@ export default function DashboardPage() {
       )}
 
       <ProfileDrawer open={showProfile} onOpenChange={setShowProfile} />
+
+      <AlertDialog open={pendingDeleteId !== null} onOpenChange={(open) => !open && setPendingDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete diagram</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this diagram. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                deleteDiagram(pendingDeleteId);
+                setPendingDeleteId(null);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
