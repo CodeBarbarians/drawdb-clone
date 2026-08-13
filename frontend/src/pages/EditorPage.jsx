@@ -10,7 +10,7 @@ import ReactFlow, {
   useUpdateNodeInternals,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { ArrowLeft, Lock as LockIcon, Map, Maximize, Wand2, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowLeft, Check, Copy, Lock as LockIcon, Map, Maximize, Wand2, ZoomIn, ZoomOut } from "lucide-react";
 
 import client from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -26,6 +26,7 @@ import Sidebar from "../components/Sidebar";
 import TableNode from "../components/TableNode";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { usePresence } from "../hooks/usePresence";
 import { generateSQL } from "../lib/sqlExport";
 import { generateDBML } from "../lib/dbmlExport";
@@ -438,6 +439,20 @@ export default function EditorPage() {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoSave, loading, canEdit, nodes, edges, dbType, diagramName]);
+
+  const [codeCopied, setCodeCopied] = useState(false);
+  const [codeFormat, setCodeFormat] = useState("sql");
+  const handleCopyCode = async (text) => {
+    await navigator.clipboard.writeText(text);
+    setCodeCopied(true);
+    setTimeout(() => setCodeCopied(false), 1500);
+  };
+  const getCodeForFormat = (format) => {
+    const model = buildDiagramModel();
+    if (format === "dbml") return generateDBML(model);
+    if (format === "json") return JSON.stringify(model, null, 2);
+    return generateSQL(model, dbType);
+  };
 
   const handleExport = () => setExportSql(generateSQL(buildDiagramModel(), dbType));
   const handleExportDialect = (dialect) => setExportSql(generateSQL(buildDiagramModel(), dialect));
@@ -964,7 +979,32 @@ export default function EditorPage() {
               </div>
             </ReactFlow>
           </div>
-          {view === "code" && <pre className="modal__sql absolute inset-0 h-full">{generateSQL(buildDiagramModel(), dbType)}</pre>}
+          {view === "code" && (
+            <div className="absolute inset-0 h-full">
+              <div className="absolute right-3 top-3 z-10 flex items-center gap-2">
+                <Select value={codeFormat} onValueChange={setCodeFormat}>
+                  <SelectTrigger className="h-8 w-28">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sql">SQL</SelectItem>
+                    <SelectItem value="dbml">DBML</SelectItem>
+                    <SelectItem value="json">JSON</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => handleCopyCode(getCodeForFormat(codeFormat))}
+                >
+                  {codeCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  {codeCopied ? "Copied!" : "Copy"}
+                </Button>
+              </div>
+              <pre className="modal__sql absolute inset-0 h-full">{getCodeForFormat(codeFormat)}</pre>
+            </div>
+          )}
           <Button
             className="absolute bottom-6 right-6 h-12 w-12 rounded-full text-lg shadow-lg"
             onClick={addTable}
