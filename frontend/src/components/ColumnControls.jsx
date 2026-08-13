@@ -37,10 +37,13 @@ export function PkToggle({ column, onToggle, className = "h-7 w-7", disabled = f
   );
 }
 
+const NO_DEFAULT = "__none__";
+
 export function ColumnOptionsPopover({
   table,
   column,
   typeOptions = [],
+  enums = [],
   onUpdateColumn,
   onDeleteColumn,
   triggerClassName = "",
@@ -49,6 +52,7 @@ export function ColumnOptionsPopover({
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef(null);
+  const matchingEnum = enums.find((e) => e.name === column.type);
 
   // React Flow's canvas pans/zooms via d3-zoom, which calls
   // stopImmediatePropagation() on pointerdown before it can bubble up to the
@@ -116,12 +120,31 @@ export function ColumnOptionsPopover({
         )}
         <div className="flex flex-col gap-1">
           <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Default</span>
-          <Input
-            className="h-8 text-xs"
-            value={column.defaultValue}
-            onChange={(e) => onUpdateColumn(table.id, column.id, { defaultValue: e.target.value })}
-            placeholder="Default"
-          />
+          {matchingEnum ? (
+            <Select
+              value={column.defaultValue || NO_DEFAULT}
+              onValueChange={(v) => onUpdateColumn(table.id, column.id, { defaultValue: v === NO_DEFAULT ? "" : v })}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_DEFAULT}>None</SelectItem>
+                {matchingEnum.values.map((v) => (
+                  <SelectItem key={v} value={v}>
+                    {v}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              className="h-8 text-xs"
+              value={column.defaultValue}
+              onChange={(e) => onUpdateColumn(table.id, column.id, { defaultValue: e.target.value })}
+              placeholder="Default"
+            />
+          )}
         </div>
         <label className="flex items-center justify-between text-sm">
           Unique

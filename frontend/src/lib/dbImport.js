@@ -1,5 +1,5 @@
 import { Parser } from "@dbml/core";
-import { makeColumn, makeTable, nextId } from "./dbTypes";
+import { makeColumn, makeEnum, makeIndex, makeTable, nextId } from "./dbTypes";
 
 const parser = new Parser();
 
@@ -8,7 +8,10 @@ export const IMPORT_FORMATS = {
   json: { label: "JSON (drawdb-clone)", dbType: null },
   postgres: { label: "PostgreSQL (SQL)", dbType: "postgresql" },
   mysql: { label: "MySQL (SQL)", dbType: "mysql" },
-  mssql: { label: "SQL Server (SQL)", dbType: "postgresql" },
+  // MariaDB's DDL is close enough to MySQL's that the same parser format and
+  // type aliases work unchanged.
+  mariadb: { label: "MariaDB (SQL)", dbType: "mariadb", parserFormat: "mysql" },
+  mssql: { label: "SQL Server (SQL)", dbType: "mssql" },
 };
 
 const TYPE_ALIASES = {
@@ -45,7 +48,22 @@ const TYPE_ALIASES = {
     [/^(numeric|decimal|real|float|double)/i, "REAL"],
     [/^(bool|varchar|nvarchar|text|ntext|json|uuid|date|time)/i, "TEXT"],
   ],
+  mssql: [
+    [/^(bigint|int8)/i, "BIGINT"],
+    [/^smallint|int2/i, "SMALLINT"],
+    [/^(int|integer|int4)/i, "INT"],
+    [/^bit|bool/i, "BIT"],
+    [/^uniqueidentifier|uuid/i, "UNIQUEIDENTIFIER"],
+    [/^datetime2|timestamp/i, "DATETIME2"],
+    [/^date/i, "DATE"],
+    [/^(numeric|decimal)/i, "DECIMAL(10,2)"],
+    [/^(nvarchar\s*\(\s*max|text|ntext)/i, "NVARCHAR(MAX)"],
+    [/^(varchar|nvarchar|character varying)/i, "NVARCHAR(255)"],
+  ],
 };
+
+// MariaDB's type surface is close enough to MySQL's to reuse the same aliases.
+TYPE_ALIASES.mariadb = TYPE_ALIASES.mysql;
 
 function normalizeType(rawType, dbType) {
   const aliases = TYPE_ALIASES[dbType] || TYPE_ALIASES.postgresql;
@@ -91,12 +109,17 @@ export function parseImport(source, format, dbType) {
     if (!Array.isArray(parsed?.tables)) {
       throw new Error("Expected a drawdb-clone export with a top-level \"tables\" array.");
     }
-    return { tables: parsed.tables, relationships: parsed.relationships || [] };
+    return {
+      tables: parsed.tables,
+      relationships: parsed.relationships || [],
+      enums: parsed.enums || [],
+      subjectAreas: parsed.subjectAreas || [],
+    };
   }
 
   let database;
   try {
-    database = parser.parse(source, format);
+    database = parser.parse(source, IMPORT_FORMATS[format]?.parserFormat || format);
   } catch (err) {
     throw new Error(formatParseError(err));
   }
@@ -105,12 +128,13 @@ export function parseImport(source, format, dbType) {
 
   const tableIdByName = new Map();
   const tables = schema.tables.map((table, index) => {
+    const columnIdByName = new Map();
     const built = makeTable({
       name: table.name,
       color: table.headerColor || "#2f6feb",
       position: { x: 60 + (index % 5) * 380, y: 60 + Math.floor(index / 5) * 340 },
-      columns: table.fields.map((field) =>
-        makeColumn({
+      columns: table.fields.map((field) => {
+        const col = makeColumn({
           name: field.name,
           type: normalizeType(field.type?.type_name || String(field.type), dbType),
           pk: !!field.pk,
@@ -119,12 +143,27 @@ export function parseImport(source, format, dbType) {
           autoIncrement: !!field.increment,
           defaultValue: extractDefault(field.dbdefault),
           note: field.note?.value || "",
+        });
+        columnIdByName.set(field.name, col.id);
+        return col;
+      }),
+      // Evaluated after `columns` above (object literal properties run in
+      // source order), so columnIdByName is already populated here.
+      indexes: (table.indexes || [])
+        .map((idx) => {
+          const columnIds = (idx.columns || [])
+            .filter((c) => c.type === "column")
+            .map((c) => columnIdByName.get(c.value))
+            .filter(Boolean);
+          return columnIds.length > 0 ? makeIndex({ name: idx.name || "", unique: !!idx.unique, columnIds }) : null;
         })
-      ),
+        .filter(Boolean),
     });
     tableIdByName.set(table.name, built);
     return built;
   });
+
+  const enums = (schema.enums || []).map((e) => makeEnum(e.name, { values: (e.values || []).map((v) => v.name) }));
 
   const relationships = [];
   for (const ref of schema.refs || []) {
@@ -149,7 +188,7 @@ export function parseImport(source, format, dbType) {
     });
   }
 
-  return { tables, relationships };
+  return { tables, relationships, enums, subjectAreas: [] };
 }
 
 /**
@@ -178,11 +217,20 @@ export function mergeModels(existingModel, importedModel) {
       tableIdMap.set(t.id, existing.id);
       touchedIds.add(existing.id);
       const existingColsByName = new Map(existing.columns.map((c) => [c.name.trim().toLowerCase(), c]));
+      const colIdRemap = new Map();
       const columns = t.columns.map((c) => {
         const match = existingColsByName.get(c.name.trim().toLowerCase());
+        const finalId = match ? match.id : c.id;
         if (match) columnIdMap.set(c.id, match.id);
+        colIdRemap.set(c.id, finalId);
         return match ? { ...c, id: match.id } : c;
       });
+      // The imported table's own indexes still reference its pre-merge
+      // column ids — remap them the same way the columns above just were,
+      // or they'd silently point at ids that no longer exist on this table.
+      const indexes = (t.indexes || [])
+        .map((idx) => ({ ...idx, columnIds: idx.columnIds.map((cid) => colIdRemap.get(cid)).filter(Boolean) }))
+        .filter((idx) => idx.columnIds.length > 0);
       return {
         ...t,
         id: existing.id,
@@ -191,6 +239,7 @@ export function mergeModels(existingModel, importedModel) {
         hidden: existing.hidden,
         locked: existing.locked,
         columns,
+        indexes,
       };
     }
     tableIdMap.set(t.id, t.id);
@@ -224,8 +273,17 @@ export function mergeModels(existingModel, importedModel) {
   const keptKeys = new Set(keptRelationships.map(keyOf));
   const newRelationships = remappedRelationships.filter((r) => !keptKeys.has(keyOf(r)));
 
+  // Enums are matched by name too — an existing enum's id/values win over an
+  // imported one of the same name rather than trying to reconcile the two.
+  const existingEnumNames = new Set((existingModel.enums || []).map((e) => e.name.trim().toLowerCase()));
+  const newEnums = (importedModel.enums || []).filter((e) => !existingEnumNames.has(e.name.trim().toLowerCase()));
+
   return {
     tables: [...keptTables, ...mergedTables],
     relationships: [...keptRelationships, ...newRelationships],
+    enums: [...(existingModel.enums || []), ...newEnums],
+    // Subject areas are a canvas-only grouping, not something a script import
+    // describes — imports never touch the existing ones.
+    subjectAreas: existingModel.subjectAreas || [],
   };
 }

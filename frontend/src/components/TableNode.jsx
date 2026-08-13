@@ -3,7 +3,7 @@ import { Handle, Position, useStore } from "reactflow";
 import { Key, Lock, Unlock, X } from "lucide-react";
 
 import { ColumnOptionsPopover } from "./ColumnControls";
-import { DB_TYPES } from "../lib/dbTypes";
+import { typeOptionsFor } from "../lib/dbTypes";
 
 // Below this zoom level, individual columns are just a few pixels tall and
 // unreadable/unusable anyway. Rendering full inputs/selects/popovers for
@@ -23,6 +23,7 @@ function TableNode({ data }) {
     table,
     dbType,
     tableWidth,
+    enums,
     globalLocked,
     onUpdateTable,
     onDeleteTable,
@@ -31,7 +32,7 @@ function TableNode({ data }) {
     onDeleteColumn,
     onToggleLock,
   } = data;
-  const typeOptions = DB_TYPES[dbType]?.columnTypes || DB_TYPES.postgresql.columnTypes;
+  const typeOptions = typeOptionsFor(dbType, enums);
   const locked = table.locked || globalLocked;
   const compact = useIsCompact();
   const widthStyle = tableWidth ? { width: `${tableWidth}px` } : undefined;
@@ -97,6 +98,7 @@ function TableNode({ data }) {
               table={table}
               column={col}
               typeOptions={typeOptions}
+              enums={enums}
               onUpdateColumn={onUpdateColumn}
               onDeleteColumn={onDeleteColumn}
               triggerClassName="h-5 w-5"

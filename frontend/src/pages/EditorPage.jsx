@@ -10,7 +10,19 @@ import ReactFlow, {
   useUpdateNodeInternals,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { ArrowLeft, Check, Copy, Lock as LockIcon, Map, Maximize, Wand2, ZoomIn, ZoomOut } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  Copy,
+  Lock as LockIcon,
+  Map as MapIcon,
+  Maximize,
+  Plus,
+  Square,
+  Wand2,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 
 import client from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -25,6 +37,7 @@ import ShareDialog from "../components/ShareDialog";
 import Sidebar from "../components/Sidebar";
 import TableNode from "../components/TableNode";
 import NoteNode from "../components/NoteNode";
+import AreaNode from "../components/AreaNode";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
@@ -33,10 +46,21 @@ import { generateSQL } from "../lib/sqlExport";
 import { generateDBML } from "../lib/dbmlExport";
 import { computeProblems } from "../lib/problems";
 import { autoLayout } from "../lib/autoLayout";
-import { defaultRelationshipName, inferCardinality, makeColumn, makeNote, makeTable, nextId } from "../lib/dbTypes";
+import {
+  DB_TYPES,
+  defaultRelationshipName,
+  inferCardinality,
+  isEffectivelyUnique,
+  makeColumn,
+  makeEnum,
+  makeNote,
+  makeSubjectArea,
+  makeTable,
+  nextId,
+} from "../lib/dbTypes";
 import { mergeModels } from "../lib/dbImport";
 
-const nodeTypes = { table: TableNode, note: NoteNode };
+const nodeTypes = { table: TableNode, note: NoteNode, area: AreaNode };
 const HISTORY_LIMIT = 50;
 const DEFAULT_ZOOM_SPEED = 1.6;
 const DEFAULT_TABLE_WIDTH = 340;
@@ -62,14 +86,27 @@ function noteToNode(note, handlers) {
   };
 }
 
-function tableToNode(table, dbType, tableWidth, handlers) {
+function tableToNode(table, dbType, tableWidth, handlers, enums) {
   return {
     id: table.id,
     type: "table",
     position: table.position || { x: 100, y: 100 },
     hidden: !!table.hidden,
     draggable: !table.locked,
-    data: { table, dbType, tableWidth, ...handlers },
+    data: { table, dbType, tableWidth, enums, ...handlers },
+  };
+}
+
+function areaToNode(area, handlers) {
+  return {
+    id: area.id,
+    type: "area",
+    position: area.position || { x: 100, y: 100 },
+    width: area.width,
+    height: area.height,
+    zIndex: -1,
+    selected: !!area.selected,
+    data: { area, onUpdateArea: handlers.onUpdateArea, onDeleteArea: handlers.onDeleteArea },
   };
 }
 
@@ -116,6 +153,8 @@ export default function EditorPage() {
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
   const [notes, setNotes] = useState([]);
+  const [enums, setEnums] = useState([]);
+  const [subjectAreas, setSubjectAreas] = useState([]);
   const [dbType, setDbType] = useState("postgresql");
   const [diagramName, setDiagramName] = useState("Untitled Diagram");
   const [loading, setLoading] = useState(true);
@@ -230,11 +269,19 @@ export default function EditorPage() {
     (tableId, colId) => {
       pushHistory();
       setNodes((nds) =>
-        nds.map((n) =>
-          n.id === tableId
-            ? { ...n, data: { ...n.data, table: { ...n.data.table, columns: n.data.table.columns.filter((c) => c.id !== colId) } } }
-            : n
-        )
+        nds.map((n) => {
+          if (n.id !== tableId) return n;
+          const indexes = (n.data.table.indexes || [])
+            .map((idx) => ({ ...idx, columnIds: idx.columnIds.filter((cid) => cid !== colId) }))
+            .filter((idx) => idx.columnIds.length > 0);
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              table: { ...n.data.table, columns: n.data.table.columns.filter((c) => c.id !== colId), indexes },
+            },
+          };
+        })
       );
       setEdges((eds) => eds.filter((e) => !(e.sourceHandle === colId || e.targetHandle === colId)));
     },
@@ -271,15 +318,19 @@ export default function EditorPage() {
       const tables = data.data?.tables || [];
       const relationships = data.data?.relationships || [];
       const loadedNotes = data.data?.notes || [];
+      const loadedEnums = data.data?.enums || [];
+      const loadedAreas = data.data?.subjectAreas || [];
       setDiagramName(data.name);
       setDbType(data.db_type);
       setShareToken(data.share_token || null);
       setShareMode(data.share_mode || "readonly");
       setIsOwner(data.is_owner !== false);
       setCanEdit(data.can_edit !== false);
-      setNodes(tables.map((t) => tableToNode(t, data.db_type, tableWidth, handlers)));
+      setNodes(tables.map((t) => tableToNode(t, data.db_type, tableWidth, handlers, loadedEnums)));
       setEdges(relationships.map(relationshipToEdge));
       setNotes(loadedNotes);
+      setEnums(loadedEnums);
+      setSubjectAreas(loadedAreas);
       setPast([]);
       setFuture([]);
       setLoading(false);
@@ -293,6 +344,10 @@ export default function EditorPage() {
   useEffect(() => {
     setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, dbType } })));
   }, [dbType]);
+
+  useEffect(() => {
+    setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, enums } })));
+  }, [enums]);
 
   useEffect(() => {
     setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, globalLocked } })));
@@ -326,8 +381,10 @@ export default function EditorPage() {
         deleteConstraint: e.data?.deleteConstraint || "No action",
       })),
       notes,
+      enums,
+      subjectAreas,
     }),
-    [nodes, edges, notes]
+    [nodes, edges, notes, enums, subjectAreas]
   );
 
   useEffect(() => {
@@ -336,9 +393,11 @@ export default function EditorPage() {
 
   const applyModel = useCallback(
     (model) => {
-      setNodes(model.tables.map((t) => tableToNode(t, dbType, tableWidth, handlers)));
+      setNodes(model.tables.map((t) => tableToNode(t, dbType, tableWidth, handlers, model.enums || [])));
       setEdges(model.relationships.map(relationshipToEdge));
       setNotes(model.notes || []);
+      setEnums(model.enums || []);
+      setSubjectAreas(model.subjectAreas || []);
     },
     [dbType, tableWidth, handlers]
   );
@@ -353,7 +412,9 @@ export default function EditorPage() {
       const tables = data.data?.tables || [];
       const relationships = data.data?.relationships || [];
       const remoteNotes = data.data?.notes || [];
-      applyModel({ tables, relationships, notes: remoteNotes });
+      const remoteEnums = data.data?.enums || [];
+      const remoteAreas = data.data?.subjectAreas || [];
+      applyModel({ tables, relationships, notes: remoteNotes, enums: remoteEnums, subjectAreas: remoteAreas });
       setDiagramName(data.name);
       setDbType(data.db_type);
     });
@@ -382,8 +443,9 @@ export default function EditorPage() {
 
   const onNodesChange = useCallback(
     (changes) => {
-      const tableChanges = changes.filter((c) => !c.id?.startsWith("note_"));
       const noteChanges = changes.filter((c) => c.id?.startsWith("note_"));
+      const areaChanges = changes.filter((c) => c.id?.startsWith("area_"));
+      const tableChanges = changes.filter((c) => !c.id?.startsWith("note_") && !c.id?.startsWith("area_"));
 
       if (tableChanges.length) {
         // Carry docked notes along when their table is dragged — notes store an
@@ -426,8 +488,52 @@ export default function EditorPage() {
             });
         });
       }
+
+      if (areaChanges.length) {
+        // Whatever's currently sitting inside the area's bounds — tables,
+        // notes — rides along when it's dragged, same idea as notes
+        // following their docked table above. Membership is re-checked
+        // against the area's position from just before this step, so it
+        // stays correct across a whole multi-event drag gesture.
+        const moves = areaChanges
+          .filter((c) => c.type === "position" && c.position)
+          .map((c) => {
+            const before = subjectAreas.find((a) => a.id === c.id);
+            if (!before) return null;
+            return { before, dx: c.position.x - before.position.x, dy: c.position.y - before.position.y };
+          })
+          .filter(Boolean);
+
+        setSubjectAreas((as) => {
+          const shapes = as.map((a) => ({ id: a.id, position: a.position, selected: !!a.selected }));
+          const updated = new Map(applyNodeChanges(areaChanges, shapes).map((u) => [u.id, u]));
+          return as.map((a) => (updated.has(a.id) ? { ...a, position: updated.get(a.id).position, selected: updated.get(a.id).selected } : a));
+        });
+
+        if (moves.length) {
+          const withinArea = (pos, area) =>
+            pos.x >= area.position.x &&
+            pos.x <= area.position.x + area.width &&
+            pos.y >= area.position.y &&
+            pos.y <= area.position.y + area.height;
+
+          setNodes((nds) =>
+            nds.map((n) => {
+              const move = moves.find((m) => withinArea(n.position, m.before));
+              return move ? { ...n, position: { x: n.position.x + move.dx, y: n.position.y + move.dy } } : n;
+            })
+          );
+          setNotes((ns) =>
+            ns.map((n) => {
+              const pos = n.position || { x: 0, y: 0 };
+              const move = moves.find((m) => withinArea(pos, m.before));
+              return move ? { ...n, position: { x: pos.x + move.dx, y: pos.y + move.dy } } : n;
+            })
+          );
+        }
+      }
     },
-    [nodes]
+    [nodes, subjectAreas]
   );
   const onEdgesChange = useCallback(
     (changes) => {
@@ -450,7 +556,10 @@ export default function EditorPage() {
             markerEnd: { type: "arrowclosed" },
             data: {
               name: defaultRelationshipName(sourceTable, sourceColumn, targetTable),
-              cardinality: inferCardinality(sourceColumn, targetColumn),
+              cardinality: inferCardinality(
+                isEffectivelyUnique(sourceColumn, sourceTable),
+                isEffectivelyUnique(targetColumn, targetTable)
+              ),
               updateConstraint: "No action",
               deleteConstraint: "No action",
             },
@@ -488,7 +597,7 @@ export default function EditorPage() {
   const addTable = () => {
     pushHistory();
     const table = makeTable({ position: { x: 80 + nodes.length * 40, y: 80 + nodes.length * 30 } });
-    setNodes((nds) => [...nds, tableToNode(table, dbType, tableWidth, handlers)]);
+    setNodes((nds) => [...nds, tableToNode(table, dbType, tableWidth, handlers, enums)]);
   };
 
   const saveModel = useCallback(
@@ -561,8 +670,10 @@ export default function EditorPage() {
     const finalDbType = mode === "replace" ? targetDbType : dbType;
     const finalModel = mode === "replace" ? model : mergeModels(buildDiagramModel(), model);
     setDbType(finalDbType);
-    setNodes(finalModel.tables.map((t) => tableToNode(t, finalDbType, tableWidth, handlers)));
+    setNodes(finalModel.tables.map((t) => tableToNode(t, finalDbType, tableWidth, handlers, finalModel.enums || [])));
     setEdges(finalModel.relationships.map(relationshipToEdge));
+    setEnums(finalModel.enums || []);
+    setSubjectAreas(finalModel.subjectAreas || []);
     setImportOpen(false);
     setImportPreset(null);
     setTimeout(() => rfInstance.current?.fitView(), 50);
@@ -733,6 +844,83 @@ export default function EditorPage() {
     setEdges((eds) => eds.filter((e) => e.id !== relId));
   };
 
+  // Columns don't hold a separate enumId — a column's `type` is just set to
+  // the enum's name, same as any other type string. Renaming/deleting an
+  // enum has to walk every table's columns to keep that link (or fall back
+  // gracefully) instead of leaving them pointing at a name that's gone.
+  const addEnum = useCallback(() => {
+    setEnums((es) => [...es, makeEnum(`enum_${es.length + 1}`)]);
+  }, []);
+
+  const updateEnum = useCallback((enumId, patch) => {
+    setEnums((es) => {
+      const target = es.find((e) => e.id === enumId);
+      if (!target) return es;
+      if (patch.name && patch.name !== target.name) {
+        const oldName = target.name;
+        const newName = patch.name;
+        setNodes((nds) =>
+          nds.map((n) => ({
+            ...n,
+            data: {
+              ...n.data,
+              table: {
+                ...n.data.table,
+                columns: n.data.table.columns.map((c) => (c.type === oldName ? { ...c, type: newName } : c)),
+              },
+            },
+          }))
+        );
+      }
+      return es.map((e) => (e.id === enumId ? { ...e, ...patch } : e));
+    });
+  }, []);
+
+  const deleteEnum = useCallback(
+    (enumId) => {
+      setEnums((es) => {
+        const target = es.find((e) => e.id === enumId);
+        if (target) {
+          const fallbackType = DB_TYPES[dbType]?.columnTypes[0] || "TEXT";
+          setNodes((nds) =>
+            nds.map((n) => ({
+              ...n,
+              data: {
+                ...n.data,
+                table: {
+                  ...n.data.table,
+                  columns: n.data.table.columns.map((c) => (c.type === target.name ? { ...c, type: fallbackType } : c)),
+                },
+              },
+            }))
+          );
+        }
+        return es.filter((e) => e.id !== enumId);
+      });
+    },
+    [dbType]
+  );
+
+  const addSubjectArea = useCallback(() => {
+    pushHistory();
+    setSubjectAreas((as) => [
+      ...as,
+      makeSubjectArea(`Area ${as.length + 1}`, { position: { x: 80 + as.length * 40, y: 80 + as.length * 30 } }),
+    ]);
+  }, [pushHistory]);
+
+  const updateSubjectArea = useCallback((areaId, patch) => {
+    setSubjectAreas((as) => as.map((a) => (a.id === areaId ? { ...a, ...patch } : a)));
+  }, []);
+
+  const deleteSubjectArea = useCallback(
+    (areaId) => {
+      pushHistory();
+      setSubjectAreas((as) => as.filter((a) => a.id !== areaId));
+    },
+    [pushHistory]
+  );
+
   const addNote = () => {
     const offset = notes.length * 24;
     setNotes((ns) => [...ns, makeNote({ position: { x: 100 + offset, y: 100 + offset } })]);
@@ -788,7 +976,12 @@ export default function EditorPage() {
   );
 
   const noteNodes = useMemo(() => notes.map((n) => noteToNode(n, noteHandlers)), [notes, noteHandlers]);
-  const canvasNodes = useMemo(() => [...nodes, ...noteNodes], [nodes, noteNodes]);
+  const areaHandlers = useMemo(
+    () => ({ onUpdateArea: updateSubjectArea, onDeleteArea: deleteSubjectArea }),
+    [updateSubjectArea, deleteSubjectArea]
+  );
+  const areaNodes = useMemo(() => subjectAreas.map((a) => areaToNode(a, areaHandlers)), [subjectAreas, areaHandlers]);
+  const canvasNodes = useMemo(() => [...areaNodes, ...nodes, ...noteNodes], [nodes, noteNodes, areaNodes]);
 
   const deleteSelected = () => {
     const selectedIds = nodes.filter((n) => n.selected).map((n) => n.id);
@@ -802,19 +995,26 @@ export default function EditorPage() {
     const selected = nodes.filter((n) => n.selected);
     if (selected.length === 0) return;
     pushHistory();
-    const clones = selected.map((n) =>
-      tableToNode(
+    const clones = selected.map((n) => {
+      const columnIdMap = new Map(n.data.table.columns.map((c) => [c.id, nextId("col")]));
+      return tableToNode(
         {
           ...n.data.table,
           id: nextId("tbl"),
           name: `${n.data.table.name}_copy`,
-          columns: n.data.table.columns.map((c) => ({ ...c, id: nextId("col") })),
+          columns: n.data.table.columns.map((c) => ({ ...c, id: columnIdMap.get(c.id) })),
+          indexes: (n.data.table.indexes || []).map((idx) => ({
+            ...idx,
+            id: nextId("idx"),
+            columnIds: idx.columnIds.map((cid) => columnIdMap.get(cid)).filter(Boolean),
+          })),
         },
         dbType,
         tableWidth,
-        handlers
-      )
-    );
+        handlers,
+        enums
+      );
+    });
     clones.forEach((c) => {
       c.position = { x: c.position.x + 40, y: c.position.y + 40 };
     });
@@ -855,8 +1055,8 @@ export default function EditorPage() {
   );
 
   const problems = useMemo(
-    () => computeProblems(nodes.map((n) => n.data.table), buildDiagramModel().relationships),
-    [nodes, buildDiagramModel]
+    () => computeProblems(nodes.map((n) => n.data.table), buildDiagramModel().relationships, enums),
+    [nodes, buildDiagramModel, enums]
   );
 
   if (loading) return <div className="editor-loading">Loading diagram…</div>;
@@ -1022,6 +1222,14 @@ export default function EditorPage() {
               onUpdateNote={updateNote}
               onLinkNote={handleLinkNote}
               onDeleteNote={deleteNote}
+              enums={enums}
+              onAddEnum={addEnum}
+              onUpdateEnum={updateEnum}
+              onDeleteEnum={deleteEnum}
+              areas={subjectAreas}
+              onAddArea={addSubjectArea}
+              onUpdateArea={updateSubjectArea}
+              onDeleteArea={deleteSubjectArea}
             />
           </div>
         )}
@@ -1096,7 +1304,16 @@ export default function EditorPage() {
                 title={showMiniMap ? "Hide minimap" : "Show minimap"}
                 onClick={() => setShowMiniMap((v) => !v)}
               >
-                <Map className="h-4 w-4" />
+                <MapIcon className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="absolute left-[84px] top-3 z-10 h-8 w-8"
+                title="Add subject area"
+                onClick={addSubjectArea}
+              >
+                <Square className="h-4 w-4" />
               </Button>
               {showMiniMap && (
                 <MiniMap
@@ -1145,11 +1362,11 @@ export default function EditorPage() {
             </div>
           )}
           <Button
-            className="absolute bottom-6 right-6 h-12 w-12 rounded-full text-lg shadow-lg"
+            className="absolute bottom-6 right-6 h-12 w-12 rounded-full shadow-lg shadow-primary/30 ring-4 ring-primary/15 transition-transform hover:scale-105 hover:shadow-xl hover:shadow-primary/40 active:scale-95 [&_svg]:size-6"
             onClick={addTable}
             title="Add table"
           >
-            +
+            <Plus strokeWidth={2.5} />
           </Button>
         </div>
       </div>

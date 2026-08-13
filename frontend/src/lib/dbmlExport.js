@@ -16,9 +16,31 @@ function columnToDBML(column) {
   return `  ${column.name} ${column.type}${settingsText}`;
 }
 
+function indexesToDBML(table) {
+  const entries = (table.indexes || []).filter((idx) => idx.columnIds.length > 0);
+  if (entries.length === 0) return "";
+  const lines = entries.map((idx) => {
+    const cols = idx.columnIds
+      .map((cid) => table.columns.find((c) => c.id === cid)?.name)
+      .filter(Boolean)
+      .join(", ");
+    const settings = [];
+    if (idx.unique) settings.push("unique");
+    if (idx.name) settings.push(`name: '${idx.name.replace(/'/g, "\\'")}'`);
+    const settingsText = settings.length > 0 ? ` [${settings.join(", ")}]` : "";
+    return `    (${cols})${settingsText}`;
+  });
+  return `\n\n  indexes {\n${lines.join("\n")}\n  }`;
+}
+
 function tableToDBML(table) {
   const body = table.columns.map(columnToDBML).join("\n");
-  return `Table ${table.name} {\n${body}\n}`;
+  return `Table ${table.name} {\n${body}${indexesToDBML(table)}\n}`;
+}
+
+function enumToDBML(enumDef) {
+  const body = enumDef.values.map((v) => `  ${v}`).join("\n");
+  return `Enum ${enumDef.name} {\n${body}\n}`;
 }
 
 function referentialActionSettings(rel) {
@@ -47,11 +69,15 @@ function relationshipToDBML(rel, tablesById) {
 export function generateDBML(diagram) {
   const tables = diagram?.tables || [];
   const relationships = diagram?.relationships || [];
+  const enums = diagram?.enums || [];
   if (tables.length === 0) return "// No tables yet. Add a table to get started.";
 
   const tablesById = new Map(tables.map((t) => [t.id, t]));
+  const usedEnumNames = new Set();
+  tables.forEach((t) => t.columns.forEach((c) => usedEnumNames.add(c.type)));
+  const enumBlocks = enums.filter((e) => usedEnumNames.has(e.name) && e.values.length > 0).map(enumToDBML);
   const tableBlocks = tables.map(tableToDBML);
   const refs = relationships.map((rel) => relationshipToDBML(rel, tablesById)).filter(Boolean);
 
-  return [...tableBlocks, ...refs].join("\n\n");
+  return [...enumBlocks, ...tableBlocks, ...refs].join("\n\n");
 }

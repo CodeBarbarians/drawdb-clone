@@ -20,14 +20,19 @@ const SQL_DIALECTS = [
   { key: "postgresql", label: "PostgreSQL" },
   { key: "mysql", label: "MySQL" },
   { key: "sqlite", label: "SQLite" },
+  { key: "mariadb", label: "MariaDB" },
+  { key: "mssql", label: "SQL Server" },
+  { key: "oracle", label: "Oracle" },
 ];
 
 const IMPORT_SQL_DIALECTS = [
   { key: "mysql", label: "MySQL", enabled: true },
   { key: "postgres", label: "PostgreSQL", enabled: true },
   { key: "mssql", label: "SQL Server", enabled: true },
+  { key: "mariadb", label: "MariaDB", enabled: true },
   { key: "sqlite", label: "SQLite", enabled: false },
-  { key: "mariadb", label: "MariaDB", enabled: false },
+  // dbml-core (the parser this app uses for SQL imports) has no Oracle
+  // grammar — only DBML/JSON round-trips work for Oracle-dialect diagrams.
   { key: "oracle", label: "Oracle", enabled: false },
 ];
 

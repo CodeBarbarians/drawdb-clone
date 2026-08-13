@@ -5,7 +5,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { CARDINALITIES, CARDINALITY_LABELS, CONSTRAINTS, defaultRelationshipName, inferCardinality } from "../lib/dbTypes";
+import {
+  CARDINALITIES,
+  CARDINALITY_LABELS,
+  CONSTRAINTS,
+  defaultRelationshipName,
+  inferCardinality,
+  isEffectivelyUnique,
+} from "../lib/dbTypes";
 
 export default function RelationshipDialog({ open, onOpenChange, tables, onSubmit }) {
   const [sourceTableId, setSourceTableId] = useState("");
@@ -54,7 +61,9 @@ export default function RelationshipDialog({ open, onOpenChange, tables, onSubmi
 
   useEffect(() => {
     if (!sourceColumn || !targetColumn) return;
-    setCardinality(inferCardinality(sourceColumn, targetColumn));
+    setCardinality(
+      inferCardinality(isEffectivelyUnique(sourceColumn, sourceTable), isEffectivelyUnique(targetColumn, targetTable))
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceColumnId, targetColumnId]);
 

@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 :root {
   /* Code Barbarians brand palette — Black / Ember / Bone / Steel */
   --bg: #0f0d0a;
@@ -809,6 +817,58 @@ select {
 .note-node__unlink:hover {
   color: #8a1f1f;
   opacity: 1;
+}
+
+/* ---------- Area node (subject area) ---------- */
+.area-node {
+  position: relative;
+  height: 100%;
+  border: 2px dashed;
+  border-radius: 8px;
+}
+
+.area-node__header {
+  position: absolute;
+  top: -13px;
+  left: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
+.area-node__swatch {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.area-node__name {
+  width: 120px;
+  background: transparent;
+  border: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--foreground);
+  padding: 2px;
+}
+
+.area-node__delete {
+  background: transparent;
+  border: none;
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+
+.area-node__delete:hover {
+  color: var(--destructive);
 }
 
 /* ---------- Modal ---------- */

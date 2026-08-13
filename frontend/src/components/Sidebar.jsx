@@ -1,7 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeftRight, ChevronDown, Eye, EyeOff, Link2, Lock, Plus, Search, Trash2, Unlock, Upload } from "lucide-react";
+import {
+  ArrowLeftRight,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Eye,
+  EyeOff,
+  Link2,
+  Lock,
+  Plus,
+  Search,
+  Trash2,
+  Unlock,
+  Upload,
+} from "lucide-react";
 
 import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -14,11 +30,76 @@ import {
 } from "./ui/dropdown-menu";
 import { ColumnOptionsPopover, NullableToggle, PkToggle } from "./ColumnControls";
 import RelationshipDialog from "./RelationshipDialog";
-import { CARDINALITIES, CARDINALITY_LABELS, CONSTRAINTS, DB_TYPES } from "../lib/dbTypes";
+import { CARDINALITIES, CARDINALITY_LABELS, CONSTRAINTS, makeIndex, TABLE_COLOR_PALETTE, typeOptionsFor } from "../lib/dbTypes";
+
+function ColorSwatchPicker({ value, onChange, disabled }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {TABLE_COLOR_PALETTE.map((c) => (
+        <button
+          key={c}
+          type="button"
+          title={c}
+          disabled={disabled}
+          className={`h-5 w-5 shrink-0 rounded-full disabled:cursor-not-allowed disabled:opacity-50 ${
+            value === c ? "ring-2 ring-foreground ring-offset-2 ring-offset-[color:var(--bg-panel)]" : ""
+          }`}
+          style={{ backgroundColor: c }}
+          onClick={() => onChange(c)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function IndexRow({ table, index, locked, onUpdateTable }) {
+  const updateIndex = (patch) => {
+    onUpdateTable(table.id, { indexes: table.indexes.map((i) => (i.id === index.id ? { ...i, ...patch } : i)) });
+  };
+  const toggleColumn = (colId) => {
+    const has = index.columnIds.includes(colId);
+    updateIndex({ columnIds: has ? index.columnIds.filter((c) => c !== colId) : [...index.columnIds, colId] });
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5 rounded-md border border-border bg-[color:var(--bg-elevated)] p-2">
+      <div className="flex items-center gap-2">
+        <Input
+          className="h-7 flex-1 text-xs"
+          placeholder="index_name"
+          value={index.name}
+          readOnly={locked}
+          onChange={(e) => updateIndex({ name: e.target.value })}
+        />
+        <label className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          <Checkbox checked={index.unique} disabled={locked} onCheckedChange={(v) => updateIndex({ unique: !!v })} />
+          Unique
+        </label>
+        <button
+          className="text-muted-foreground hover:text-destructive"
+          title="Delete index"
+          disabled={locked}
+          onClick={() => onUpdateTable(table.id, { indexes: table.indexes.filter((i) => i.id !== index.id) })}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-2.5">
+        {table.columns.map((c) => (
+          <label key={c.id} className="flex items-center gap-1 text-xs">
+            <Checkbox checked={index.columnIds.includes(c.id)} disabled={locked} onCheckedChange={() => toggleColumn(c.id)} />
+            {c.name}
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function TableRow({
   table,
   dbType,
+  enums,
   globalLocked,
   expanded,
   onToggleExpand,
@@ -31,7 +112,7 @@ function TableRow({
   onUpdateColumn,
   onDeleteColumn,
 }) {
-  const typeOptions = DB_TYPES[dbType]?.columnTypes || DB_TYPES.postgresql.columnTypes;
+  const typeOptions = typeOptionsFor(dbType, enums);
   const locked = table.locked || globalLocked;
 
   return (
@@ -71,6 +152,15 @@ function TableRow({
             />
           </label>
 
+          <label className="flex items-center gap-2 text-xs">
+            <span className="font-mono uppercase tracking-wider text-muted-foreground">Color:</span>
+            <ColorSwatchPicker
+              value={table.color}
+              disabled={locked}
+              onChange={(color) => onUpdateTable(table.id, { color })}
+            />
+          </label>
+
           {table.columns.map((col) => (
             <div key={col.id} className="flex items-center gap-1">
               <Input
@@ -100,6 +190,7 @@ function TableRow({
               <ColumnOptionsPopover
                 table={table}
                 column={col}
+                enums={enums}
                 onUpdateColumn={onUpdateColumn}
                 onDeleteColumn={onDeleteColumn}
                 disabled={locked}
@@ -113,6 +204,22 @@ function TableRow({
             </Button>
             <Button size="sm" variant="destructive" disabled={locked} onClick={() => onDeleteTable(table.id)}>
               <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+
+          <div className="flex flex-col gap-1.5 border-t border-border pt-2">
+            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Indexes</span>
+            {(table.indexes || []).map((idx) => (
+              <IndexRow key={idx.id} table={table} index={idx} locked={locked} onUpdateTable={onUpdateTable} />
+            ))}
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-dashed text-muted-foreground hover:text-foreground"
+              disabled={locked || table.columns.length === 0}
+              onClick={() => onUpdateTable(table.id, { indexes: [...(table.indexes || []), makeIndex()] })}
+            >
+              <Plus className="h-3.5 w-3.5" /> Add index
             </Button>
           </div>
         </div>
@@ -232,6 +339,95 @@ function RelationshipRow({ rel, tables, expanded, onToggleExpand, onUpdateRelati
   );
 }
 
+function EnumRow({ enumDef, expanded, onToggleExpand, onUpdateEnum, onDeleteEnum }) {
+  const addValue = () => onUpdateEnum(enumDef.id, { values: [...enumDef.values, ""] });
+  const updateValue = (i, v) => {
+    const values = enumDef.values.slice();
+    values[i] = v;
+    onUpdateEnum(enumDef.id, { values });
+  };
+  const removeValue = (i) => onUpdateEnum(enumDef.id, { values: enumDef.values.filter((_, idx) => idx !== i) });
+  const moveValue = (i, dir) => {
+    const j = i + dir;
+    if (j < 0 || j >= enumDef.values.length) return;
+    const values = enumDef.values.slice();
+    [values[i], values[j]] = [values[j], values[i]];
+    onUpdateEnum(enumDef.id, { values });
+  };
+
+  return (
+    <div className="rounded-md border border-border bg-[color:var(--bg-panel)]">
+      <div className="flex items-center gap-2 px-2 py-1.5 text-sm">
+        <button className="flex-1 truncate text-left font-medium" onClick={() => onToggleExpand(enumDef.id)}>
+          {enumDef.name} <span className="text-muted-foreground">({enumDef.values.length})</span>
+        </button>
+        <button
+          className="text-muted-foreground hover:text-destructive"
+          title="Delete enum"
+          onClick={() => onDeleteEnum(enumDef.id)}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+        <button className="text-muted-foreground hover:text-foreground" onClick={() => onToggleExpand(enumDef.id)}>
+          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="flex flex-col gap-2 border-t border-border p-2">
+          <label className="flex items-center gap-2 text-xs">
+            <span className="font-mono uppercase tracking-wider text-muted-foreground">Name:</span>
+            <Input
+              className="h-7 flex-1 text-xs"
+              value={enumDef.name}
+              onChange={(e) => onUpdateEnum(enumDef.id, { name: e.target.value })}
+            />
+          </label>
+
+          <div className="flex flex-col gap-1">
+            {enumDef.values.map((v, i) => (
+              <div key={i} className="flex items-center gap-1">
+                <Input className="h-7 flex-1 text-xs" value={v} onChange={(e) => updateValue(i, e.target.value)} />
+                <button
+                  className="text-muted-foreground hover:text-foreground disabled:opacity-30"
+                  disabled={i === 0}
+                  onClick={() => moveValue(i, -1)}
+                >
+                  <ChevronUp className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  className="text-muted-foreground hover:text-foreground disabled:opacity-30"
+                  disabled={i === enumDef.values.length - 1}
+                  onClick={() => moveValue(i, 1)}
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+                <button className="text-muted-foreground hover:text-destructive" onClick={() => removeValue(i)}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+            {enumDef.values.length === 0 && <p className="px-1 py-1 text-xs text-muted-foreground">No values yet.</p>}
+          </div>
+
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-dashed text-muted-foreground hover:text-foreground"
+            onClick={addValue}
+          >
+            <Plus className="h-3.5 w-3.5" /> Add value
+          </Button>
+
+          <Button size="sm" variant="destructive" onClick={() => onDeleteEnum(enumDef.id)}>
+            <Trash2 className="h-3.5 w-3.5" /> Delete enum
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NoteRow({ note, tables, expanded, onToggleExpand, onUpdateNote, onLinkNote, onDeleteNote }) {
   const linkedTable = tables.find((t) => t.id === note.tableId);
 
@@ -305,6 +501,50 @@ function NoteRow({ note, tables, expanded, onToggleExpand, onUpdateNote, onLinkN
   );
 }
 
+function AreaRow({ area, expanded, onToggleExpand, onUpdateArea, onDeleteArea }) {
+  return (
+    <div className="rounded-md border border-border bg-[color:var(--bg-panel)]" style={{ borderLeft: `4px solid ${area.color}` }}>
+      <div className="flex items-center gap-2 px-2 py-1.5 text-sm">
+        <button className="flex-1 truncate text-left font-medium" onClick={() => onToggleExpand(area.id)}>
+          {area.name || "Untitled area"}
+        </button>
+        <button
+          className="text-muted-foreground hover:text-destructive"
+          title="Delete area"
+          onClick={() => onDeleteArea(area.id)}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+        <button className="text-muted-foreground hover:text-foreground" onClick={() => onToggleExpand(area.id)}>
+          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="flex flex-col gap-2 border-t border-border p-2">
+          <label className="flex items-center gap-2 text-xs">
+            <span className="font-mono uppercase tracking-wider text-muted-foreground">Name:</span>
+            <Input
+              className="h-7 flex-1 text-xs"
+              value={area.name}
+              onChange={(e) => onUpdateArea(area.id, { name: e.target.value })}
+            />
+          </label>
+
+          <label className="flex items-center gap-2 text-xs">
+            <span className="font-mono uppercase tracking-wider text-muted-foreground">Color:</span>
+            <ColorSwatchPicker value={area.color} onChange={(color) => onUpdateArea(area.id, { color })} />
+          </label>
+
+          <Button size="sm" variant="destructive" onClick={() => onDeleteArea(area.id)}>
+            <Trash2 className="h-3.5 w-3.5" /> Delete area
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const MIN_SIDEBAR_WIDTH = 240;
 const MAX_SIDEBAR_WIDTH = 640;
 const DEFAULT_SIDEBAR_WIDTH = 320;
@@ -333,12 +573,24 @@ export default function Sidebar({
   onUpdateNote,
   onLinkNote,
   onDeleteNote,
+  enums,
+  onAddEnum,
+  onUpdateEnum,
+  onDeleteEnum,
+  areas,
+  onAddArea,
+  onUpdateArea,
+  onDeleteArea,
 }) {
   const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState(null);
   const [expandedRelId, setExpandedRelId] = useState(null);
   const [expandedNoteId, setExpandedNoteId] = useState(null);
+  const [expandedEnumId, setExpandedEnumId] = useState(null);
+  const [expandedAreaId, setExpandedAreaId] = useState(null);
   const [relDialogOpen, setRelDialogOpen] = useState(false);
+  const tabsListRef = useRef(null);
+  const scrollTabs = (dir) => tabsListRef.current?.scrollBy({ left: dir * 96, behavior: "smooth" });
   const [width, setWidth] = useState(() => {
     const stored = Number(localStorage.getItem("sidebarWidth"));
     return stored >= MIN_SIDEBAR_WIDTH && stored <= MAX_SIDEBAR_WIDTH ? stored : DEFAULT_SIDEBAR_WIDTH;
@@ -392,11 +644,29 @@ export default function Sidebar({
         onMouseDown={handleResizeStart}
       />
       <Tabs defaultValue="tables" className="flex h-full flex-col">
-        <TabsList className="px-2 pt-2">
-          <TabsTrigger value="tables">Tables ({tables.length})</TabsTrigger>
-          <TabsTrigger value="relationships">Relationships ({relationships.length})</TabsTrigger>
-          <TabsTrigger value="notes">Notes ({notes.length})</TabsTrigger>
-        </TabsList>
+        <div className="flex items-center">
+          <button
+            type="button"
+            className="flex h-8 w-5 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
+            onClick={() => scrollTabs(-1)}
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </button>
+          <TabsList ref={tabsListRef} className="flex-1 px-1 pt-2">
+            <TabsTrigger value="tables">Tables ({tables.length})</TabsTrigger>
+            <TabsTrigger value="relationships">Relationships ({relationships.length})</TabsTrigger>
+            <TabsTrigger value="notes">Notes ({notes.length})</TabsTrigger>
+            <TabsTrigger value="enums">Enums ({enums.length})</TabsTrigger>
+            <TabsTrigger value="areas">Areas ({areas.length})</TabsTrigger>
+          </TabsList>
+          <button
+            type="button"
+            className="flex h-8 w-5 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
+            onClick={() => scrollTabs(1)}
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
 
         <TabsContent value="tables" className="flex flex-col gap-2 p-3">
           <div className="flex gap-2">
@@ -442,6 +712,7 @@ export default function Sidebar({
                 key={table.id}
                 table={table}
                 dbType={dbType}
+                enums={enums}
                 globalLocked={globalLocked}
                 expanded={expandedId === table.id}
                 onToggleExpand={(id) => setExpandedId((cur) => (cur === id ? null : id))}
@@ -510,6 +781,56 @@ export default function Sidebar({
               />
             ))}
             {notes.length === 0 && <p className="px-1 py-2 text-xs text-muted-foreground">No notes yet.</p>}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="enums" className="flex flex-col gap-2 p-3">
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full shrink-0 border-dashed text-muted-foreground hover:text-foreground"
+            onClick={onAddEnum}
+          >
+            <Plus className="h-3.5 w-3.5" /> Add enum
+          </Button>
+
+          <div className="flex flex-col gap-1.5">
+            {enums.map((enumDef) => (
+              <EnumRow
+                key={enumDef.id}
+                enumDef={enumDef}
+                expanded={expandedEnumId === enumDef.id}
+                onToggleExpand={(id) => setExpandedEnumId((cur) => (cur === id ? null : id))}
+                onUpdateEnum={onUpdateEnum}
+                onDeleteEnum={onDeleteEnum}
+              />
+            ))}
+            {enums.length === 0 && <p className="px-1 py-2 text-xs text-muted-foreground">No enums yet.</p>}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="areas" className="flex flex-col gap-2 p-3">
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full shrink-0 border-dashed text-muted-foreground hover:text-foreground"
+            onClick={onAddArea}
+          >
+            <Plus className="h-3.5 w-3.5" /> Add area
+          </Button>
+
+          <div className="flex flex-col gap-1.5">
+            {areas.map((area) => (
+              <AreaRow
+                key={area.id}
+                area={area}
+                expanded={expandedAreaId === area.id}
+                onToggleExpand={(id) => setExpandedAreaId((cur) => (cur === id ? null : id))}
+                onUpdateArea={onUpdateArea}
+                onDeleteArea={onDeleteArea}
+              />
+            ))}
+            {areas.length === 0 && <p className="px-1 py-2 text-xs text-muted-foreground">No subject areas yet.</p>}
           </div>
         </TabsContent>
       </Tabs>
