@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeftRight, ChevronDown, Eye, EyeOff, Lock, Plus, Search, Trash2, Unlock, Upload } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, Eye, EyeOff, Link2, Lock, Plus, Search, Trash2, Unlock, Upload } from "lucide-react";
 
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { Textarea } from "./ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import {
@@ -231,6 +232,79 @@ function RelationshipRow({ rel, tables, expanded, onToggleExpand, onUpdateRelati
   );
 }
 
+function NoteRow({ note, tables, expanded, onToggleExpand, onUpdateNote, onLinkNote, onDeleteNote }) {
+  const linkedTable = tables.find((t) => t.id === note.tableId);
+
+  return (
+    <div className="rounded-md border border-border bg-[color:var(--bg-panel)]">
+      <div className="flex items-center gap-2 px-2 py-1.5 text-sm">
+        <button className="flex-1 truncate text-left font-medium" onClick={() => onToggleExpand(note.id)}>
+          {note.title || "Untitled note"}
+        </button>
+        {linkedTable && (
+          <span
+            className="flex items-center gap-1 truncate rounded-full bg-[color:var(--bg-elevated)] px-2 py-0.5 font-mono text-[10px] text-muted-foreground"
+            title={`Linked to ${linkedTable.name}`}
+          >
+            <Link2 className="h-3 w-3" /> {linkedTable.name}
+          </span>
+        )}
+        <button
+          className="text-muted-foreground hover:text-destructive"
+          title="Delete note"
+          onClick={() => onDeleteNote(note.id)}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+        <button className="text-muted-foreground hover:text-foreground" onClick={() => onToggleExpand(note.id)}>
+          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="flex flex-col gap-2 border-t border-border p-2">
+          <label className="flex items-center gap-2 text-xs">
+            <span className="font-mono uppercase tracking-wider text-muted-foreground">Title:</span>
+            <Input
+              className="h-7 flex-1 text-xs"
+              value={note.title}
+              onChange={(e) => onUpdateNote(note.id, { title: e.target.value })}
+            />
+          </label>
+
+          <Textarea
+            className="min-h-24 text-xs"
+            value={note.content}
+            placeholder="Write a note…"
+            onChange={(e) => onUpdateNote(note.id, { content: e.target.value })}
+          />
+
+          <label className="flex items-center gap-2 text-xs">
+            <span className="w-24 shrink-0 font-mono uppercase tracking-wider text-muted-foreground">Linked table:</span>
+            <Select value={note.tableId || "none"} onValueChange={(v) => onLinkNote(note.id, v === "none" ? null : v)}>
+              <SelectTrigger className="h-7 flex-1 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                {tables.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+
+          <Button size="sm" variant="destructive" onClick={() => onDeleteNote(note.id)}>
+            <Trash2 className="h-3.5 w-3.5" /> Delete note
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const MIN_SIDEBAR_WIDTH = 240;
 const MAX_SIDEBAR_WIDTH = 640;
 const DEFAULT_SIDEBAR_WIDTH = 320;
@@ -238,6 +312,7 @@ const DEFAULT_SIDEBAR_WIDTH = 320;
 export default function Sidebar({
   tables,
   relationships,
+  notes,
   dbType,
   globalLocked,
   detached,
@@ -254,10 +329,15 @@ export default function Sidebar({
   onAddColumn,
   onUpdateColumn,
   onDeleteColumn,
+  onAddNote,
+  onUpdateNote,
+  onLinkNote,
+  onDeleteNote,
 }) {
   const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState(null);
   const [expandedRelId, setExpandedRelId] = useState(null);
+  const [expandedNoteId, setExpandedNoteId] = useState(null);
   const [relDialogOpen, setRelDialogOpen] = useState(false);
   const [width, setWidth] = useState(() => {
     const stored = Number(localStorage.getItem("sidebarWidth"));
@@ -315,6 +395,7 @@ export default function Sidebar({
         <TabsList className="px-2 pt-2">
           <TabsTrigger value="tables">Tables ({tables.length})</TabsTrigger>
           <TabsTrigger value="relationships">Relationships ({relationships.length})</TabsTrigger>
+          <TabsTrigger value="notes">Notes ({notes.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="tables" className="flex flex-col gap-2 p-3">
@@ -402,6 +483,33 @@ export default function Sidebar({
               />
             ))}
             {relationships.length === 0 && <p className="px-1 py-2 text-xs text-muted-foreground">No relationships yet.</p>}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="notes" className="flex flex-col gap-2 p-3">
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full shrink-0 border-dashed text-muted-foreground hover:text-foreground"
+            onClick={onAddNote}
+          >
+            <Plus className="h-3.5 w-3.5" /> Add note
+          </Button>
+
+          <div className="flex flex-col gap-1.5">
+            {notes.map((note) => (
+              <NoteRow
+                key={note.id}
+                note={note}
+                tables={tables}
+                expanded={expandedNoteId === note.id}
+                onToggleExpand={(id) => setExpandedNoteId((cur) => (cur === id ? null : id))}
+                onUpdateNote={onUpdateNote}
+                onLinkNote={onLinkNote}
+                onDeleteNote={onDeleteNote}
+              />
+            ))}
+            {notes.length === 0 && <p className="px-1 py-2 text-xs text-muted-foreground">No notes yet.</p>}
           </div>
         </TabsContent>
       </Tabs>

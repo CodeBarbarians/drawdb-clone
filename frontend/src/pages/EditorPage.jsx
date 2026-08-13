@@ -24,6 +24,7 @@ import ProfileDrawer from "../components/ProfileDrawer";
 import ShareDialog from "../components/ShareDialog";
 import Sidebar from "../components/Sidebar";
 import TableNode from "../components/TableNode";
+import NoteNode from "../components/NoteNode";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
@@ -32,13 +33,34 @@ import { generateSQL } from "../lib/sqlExport";
 import { generateDBML } from "../lib/dbmlExport";
 import { computeProblems } from "../lib/problems";
 import { autoLayout } from "../lib/autoLayout";
-import { defaultRelationshipName, inferCardinality, makeColumn, makeTable, nextId } from "../lib/dbTypes";
+import { defaultRelationshipName, inferCardinality, makeColumn, makeNote, makeTable, nextId } from "../lib/dbTypes";
 import { mergeModels } from "../lib/dbImport";
 
-const nodeTypes = { table: TableNode };
+const nodeTypes = { table: TableNode, note: NoteNode };
 const HISTORY_LIMIT = 50;
 const DEFAULT_ZOOM_SPEED = 1.6;
 const DEFAULT_TABLE_WIDTH = 340;
+const NOTE_HEIGHT = 160;
+const NOTE_DOCK_GAP = 16;
+
+function noteToNode(note, handlers) {
+  return {
+    id: note.id,
+    type: "note",
+    position: note.position || { x: 100, y: 100 },
+    width: note.width,
+    height: note.height,
+    selected: !!note.selected,
+    draggable: false,
+    data: {
+      note,
+      linkedTableName: handlers.getTableName(note.tableId),
+      onUpdateNote: handlers.onUpdateNote,
+      onUnlinkNote: handlers.onUnlinkNote,
+      onDeleteNote: handlers.onDeleteNote,
+    },
+  };
+}
 
 function tableToNode(table, dbType, tableWidth, handlers) {
   return {
@@ -93,6 +115,7 @@ export default function EditorPage() {
 
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
+  const [notes, setNotes] = useState([]);
   const [dbType, setDbType] = useState("postgresql");
   const [diagramName, setDiagramName] = useState("Untitled Diagram");
   const [loading, setLoading] = useState(true);
@@ -148,7 +171,7 @@ export default function EditorPage() {
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
   const rfInstance = useRef(null);
-  const modelRef = useRef({ tables: [], relationships: [] });
+  const modelRef = useRef({ tables: [], relationships: [], notes: [] });
 
   const updateTable = useCallback((tableId, patch) => {
     setNodes((nds) =>
@@ -247,6 +270,7 @@ export default function EditorPage() {
       if (!active) return;
       const tables = data.data?.tables || [];
       const relationships = data.data?.relationships || [];
+      const loadedNotes = data.data?.notes || [];
       setDiagramName(data.name);
       setDbType(data.db_type);
       setShareToken(data.share_token || null);
@@ -255,6 +279,7 @@ export default function EditorPage() {
       setCanEdit(data.can_edit !== false);
       setNodes(tables.map((t) => tableToNode(t, data.db_type, tableWidth, handlers)));
       setEdges(relationships.map(relationshipToEdge));
+      setNotes(loadedNotes);
       setPast([]);
       setFuture([]);
       setLoading(false);
@@ -300,8 +325,9 @@ export default function EditorPage() {
         updateConstraint: e.data?.updateConstraint || "No action",
         deleteConstraint: e.data?.deleteConstraint || "No action",
       })),
+      notes,
     }),
-    [nodes, edges]
+    [nodes, edges, notes]
   );
 
   useEffect(() => {
@@ -312,6 +338,7 @@ export default function EditorPage() {
     (model) => {
       setNodes(model.tables.map((t) => tableToNode(t, dbType, tableWidth, handlers)));
       setEdges(model.relationships.map(relationshipToEdge));
+      setNotes(model.notes || []);
     },
     [dbType, tableWidth, handlers]
   );
@@ -325,7 +352,8 @@ export default function EditorPage() {
     client.get(`/diagrams/${id}`).then(({ data }) => {
       const tables = data.data?.tables || [];
       const relationships = data.data?.relationships || [];
-      applyModel({ tables, relationships });
+      const remoteNotes = data.data?.notes || [];
+      applyModel({ tables, relationships, notes: remoteNotes });
       setDiagramName(data.name);
       setDbType(data.db_type);
     });
@@ -352,7 +380,55 @@ export default function EditorPage() {
     });
   }, [applyModel]);
 
-  const onNodesChange = useCallback((changes) => setNodes((nds) => applyNodeChanges(changes, nds)), []);
+  const onNodesChange = useCallback(
+    (changes) => {
+      const tableChanges = changes.filter((c) => !c.id?.startsWith("note_"));
+      const noteChanges = changes.filter((c) => c.id?.startsWith("note_"));
+
+      if (tableChanges.length) {
+        // Carry docked notes along when their table is dragged — notes store an
+        // absolute position (not a table-relative offset), so we shift them by
+        // the same delta the table just moved instead of recomputing from scratch.
+        const deltas = new Map();
+        tableChanges.forEach((c) => {
+          if (c.type === "position" && c.position) {
+            const before = nodes.find((n) => n.id === c.id);
+            if (before) deltas.set(c.id, { dx: c.position.x - before.position.x, dy: c.position.y - before.position.y });
+          }
+        });
+        setNodes((nds) => applyNodeChanges(tableChanges, nds));
+        if (deltas.size) {
+          setNotes((ns) =>
+            ns.map((n) => {
+              if (!n.tableId || !deltas.has(n.tableId)) return n;
+              const d = deltas.get(n.tableId);
+              return { ...n, position: { x: (n.position?.x || 0) + d.dx, y: (n.position?.y || 0) + d.dy } };
+            })
+          );
+        }
+      }
+
+      if (noteChanges.length) {
+        setNotes((ns) => {
+          const shapes = ns.map((n) => ({
+            id: n.id,
+            position: n.position,
+            width: n.width,
+            height: n.height,
+            selected: !!n.selected,
+          }));
+          const updated = new Map(applyNodeChanges(noteChanges, shapes).map((u) => [u.id, u]));
+          return ns
+            .filter((n) => updated.has(n.id))
+            .map((n) => {
+              const u = updated.get(n.id);
+              return { ...n, position: u.position, width: u.width, height: u.height, selected: u.selected };
+            });
+        });
+      }
+    },
+    [nodes]
+  );
   const onEdgesChange = useCallback(
     (changes) => {
       if (changes.some((c) => c.type === "remove")) pushHistory();
@@ -438,7 +514,7 @@ export default function EditorPage() {
     const t = setTimeout(() => handleSave(), 1500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoSave, loading, canEdit, nodes, edges, dbType, diagramName]);
+  }, [autoSave, loading, canEdit, nodes, edges, notes, dbType, diagramName]);
 
   const [codeCopied, setCodeCopied] = useState(false);
   const [codeFormat, setCodeFormat] = useState("sql");
@@ -504,7 +580,7 @@ export default function EditorPage() {
     const { data } = await client.post("/diagrams", {
       name: "Untitled Diagram",
       db_type: "postgresql",
-      data: { tables: [], relationships: [] },
+      data: { tables: [], relationships: [], notes: [] },
     });
     navigate(`/editor/${data.id}`);
   };
@@ -656,6 +732,63 @@ export default function EditorPage() {
     pushHistory();
     setEdges((eds) => eds.filter((e) => e.id !== relId));
   };
+
+  const addNote = () => {
+    const offset = notes.length * 24;
+    setNotes((ns) => [...ns, makeNote({ position: { x: 100 + offset, y: 100 + offset } })]);
+  };
+
+  const updateNote = (noteId, patch) => {
+    setNotes((ns) => ns.map((n) => (n.id === noteId ? { ...n, ...patch } : n)));
+  };
+
+  const deleteNote = (noteId) => {
+    setNotes((ns) => ns.filter((n) => n.id !== noteId));
+  };
+
+  const getTableName = useCallback(
+    (tableId) => (tableId ? nodes.find((n) => n.id === tableId)?.data.table.name || null : null),
+    [nodes]
+  );
+
+  const linkNote = useCallback(
+    (noteId, tableId) => {
+      const table = nodes.find((n) => n.id === tableId);
+      if (!table) return;
+      const stackIndex = notes.filter((n) => n.tableId === tableId && n.id !== noteId).length;
+      const position = {
+        x: table.position.x + (table.width || tableWidth) + NOTE_DOCK_GAP,
+        y: table.position.y + stackIndex * (NOTE_HEIGHT + NOTE_DOCK_GAP),
+      };
+      setNotes((ns) => ns.map((n) => (n.id === noteId ? { ...n, tableId, position } : n)));
+    },
+    [nodes, notes, tableWidth]
+  );
+
+  const unlinkNote = useCallback((noteId) => {
+    setNotes((ns) => ns.map((n) => (n.id === noteId ? { ...n, tableId: null } : n)));
+  }, []);
+
+  const handleLinkNote = useCallback(
+    (noteId, tableId) => {
+      if (tableId) linkNote(noteId, tableId);
+      else unlinkNote(noteId);
+    },
+    [linkNote, unlinkNote]
+  );
+
+  const noteHandlers = useMemo(
+    () => ({
+      getTableName,
+      onUpdateNote: updateNote,
+      onUnlinkNote: unlinkNote,
+      onDeleteNote: deleteNote,
+    }),
+    [getTableName, unlinkNote]
+  );
+
+  const noteNodes = useMemo(() => notes.map((n) => noteToNode(n, noteHandlers)), [notes, noteHandlers]);
+  const canvasNodes = useMemo(() => [...nodes, ...noteNodes], [nodes, noteNodes]);
 
   const deleteSelected = () => {
     const selectedIds = nodes.filter((n) => n.selected).map((n) => n.id);
@@ -868,6 +1001,7 @@ export default function EditorPage() {
             <Sidebar
               tables={nodes.map((n) => n.data.table)}
               relationships={buildDiagramModel().relationships}
+              notes={notes}
               dbType={dbType}
               globalLocked={globalLocked}
               detached={sidebarDetached}
@@ -884,6 +1018,10 @@ export default function EditorPage() {
               onAddColumn={addColumn}
               onUpdateColumn={updateColumn}
               onDeleteColumn={deleteColumn}
+              onAddNote={addNote}
+              onUpdateNote={updateNote}
+              onLinkNote={handleLinkNote}
+              onDeleteNote={deleteNote}
             />
           </div>
         )}
@@ -892,7 +1030,7 @@ export default function EditorPage() {
               Structure/Code doesn't re-mount every table node on large diagrams. */}
           <div className={view === "structure" ? "h-full" : "hidden"}>
             <ReactFlow
-              nodes={nodes}
+              nodes={canvasNodes}
               edges={edges}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
@@ -905,6 +1043,7 @@ export default function EditorPage() {
               nodesDraggable={!globalLocked}
               nodesConnectable={!globalLocked}
               elementsSelectable={!globalLocked}
+              deleteKeyCode={["Backspace", "Delete"]}
               onlyRenderVisibleElements
               fitView
             >

@@ -74,6 +74,17 @@ export function makeTable(overrides = {}) {
   };
 }
 
+export function makeNote(overrides = {}) {
+  return {
+    id: nextId("note"),
+    title: "Note",
+    content: "",
+    position: { x: 100, y: 100 },
+    tableId: null,
+    ...overrides,
+  };
+}
+
 export const CARDINALITIES = ["one_to_one", "one_to_many", "many_to_one"];
 
 export const CARDINALITY_LABELS = {
