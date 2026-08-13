@@ -90,6 +90,7 @@ class AccessOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     email: EmailStr
+    username: str | None = None
     first_seen_at: datetime
     last_seen_at: datetime
 
@@ -98,5 +99,6 @@ class ActivityOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     email: EmailStr
+    username: str | None = None
     message: str
     created_at: datetime

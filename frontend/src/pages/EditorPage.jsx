@@ -20,6 +20,7 @@ import ExportModal from "../components/ExportModal";
 import ImportModal from "../components/ImportModal";
 import MenuBar from "../components/MenuBar";
 import PresenceBar from "../components/PresenceBar";
+import ProfileDrawer from "../components/ProfileDrawer";
 import ShareDialog from "../components/ShareDialog";
 import Sidebar from "../components/Sidebar";
 import TableNode from "../components/TableNode";
@@ -120,6 +121,7 @@ export default function EditorPage() {
   const [shareMode, setShareMode] = useState("readonly");
   const [sharing, setSharing] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [accessList, setAccessList] = useState([]);
   const [activityList, setActivityList] = useState([]);
   const [isOwner, setIsOwner] = useState(true);
@@ -710,6 +712,7 @@ export default function EditorPage() {
         diagramName={diagramName}
         onNameChange={setDiagramName}
         savedAt={savedAt}
+        saving={saving}
         onBack={() => navigate("/")}
         onNew={handleNew}
         onSave={handleSave}
@@ -775,6 +778,7 @@ export default function EditorPage() {
         isOwner={isOwner}
         collaboratorBadge={collaboratorBadge}
         user={user}
+        onShowProfile={() => setShowProfile(true)}
         onLogout={logout}
       />
       <div className="flex flex-1 overflow-hidden">
@@ -1024,6 +1028,7 @@ export default function EditorPage() {
           </div>
         </DialogContent>
       </Dialog>
+      <ProfileDrawer open={showProfile} onOpenChange={setShowProfile} />
       <ShareDialog
         open={showShare}
         onOpenChange={setShowShare}

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, Copy, Unlink } from "lucide-react";
 
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
@@ -28,6 +28,8 @@ function ModeToggle({ mode, onChange, disabled }) {
   );
 }
 
+const ACTIVITY_PAGE_SIZE = 5;
+
 export default function ShareDialog({
   open,
   onOpenChange,
@@ -42,10 +44,30 @@ export default function ShareDialog({
 }) {
   const [copied, setCopied] = useState(false);
   const [pendingMode, setPendingMode] = useState("readonly");
+  const [activityShown, setActivityShown] = useState(ACTIVITY_PAGE_SIZE);
   const url = shareToken ? `${window.location.origin}/share/${shareToken}` : "";
 
+  useEffect(() => {
+    if (open) setActivityShown(ACTIVITY_PAGE_SIZE);
+  }, [open]);
+
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(url);
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      const el = document.createElement("textarea");
+      el.value = url;
+      el.style.position = "fixed";
+      el.style.opacity = "0";
+      document.body.appendChild(el);
+      el.focus();
+      el.select();
+      try {
+        document.execCommand("copy");
+      } finally {
+        document.body.removeChild(el);
+      }
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -71,8 +93,14 @@ export default function ShareDialog({
                   {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                 </Button>
               </div>
-              <Button size="sm" variant="destructive" onClick={onDisableShare} disabled={sharing}>
-                Disable link
+              <Button
+                size="sm"
+                variant="destructive"
+                className="w-full shrink-0 border-dashed"
+                onClick={onDisableShare}
+                disabled={sharing}
+              >
+                <Unlink className="h-3.5 w-3.5" /> Disable link
               </Button>
 
               {shareMode === "editable" && (
@@ -102,16 +130,28 @@ export default function ShareDialog({
                       Recent activity
                     </span>
                     {activityList && activityList.length > 0 ? (
-                      <ul className="flex flex-col gap-1">
-                        {activityList.map((a, i) => (
-                          <li key={i} className="text-xs">
-                            <span className="font-medium">{a.email}</span>{" "}
-                            <span className="text-muted-foreground">
-                              {a.message} · {new Date(a.created_at).toLocaleString()}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
+                      <>
+                        <ul className="flex max-h-40 flex-col gap-1 overflow-y-auto">
+                          {activityList.slice(0, activityShown).map((a, i) => (
+                            <li key={i} className="text-xs">
+                              <span className="font-medium">{a.username || a.email}</span>
+                              {a.username && <span className="ml-1 text-[10px] text-muted-foreground">{a.email}</span>}{" "}
+                              <span className="text-muted-foreground">
+                                {a.message} · {new Date(a.created_at).toLocaleString()}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                        {activityShown < activityList.length && (
+                          <button
+                            type="button"
+                            className="mt-1 self-start font-mono text-[10px] uppercase tracking-wider text-[color:var(--accent-hover)] hover:underline"
+                            onClick={() => setActivityShown((n) => n + ACTIVITY_PAGE_SIZE)}
+                          >
+                            Show more ({activityList.length - activityShown} left)
+                          </button>
+                        )}
+                      </>
                     ) : (
                       <p className="text-xs text-muted-foreground">No edits yet.</p>
                     )}

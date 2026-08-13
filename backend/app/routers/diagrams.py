@@ -197,7 +197,10 @@ def list_access(
         .order_by(models.DiagramAccess.last_seen_at.desc())
         .all()
     )
-    return [schemas.AccessOut(email=r.user.email, first_seen_at=r.first_seen_at, last_seen_at=r.last_seen_at) for r in rows]
+    return [
+        schemas.AccessOut(email=r.user.email, username=r.user.username, first_seen_at=r.first_seen_at, last_seen_at=r.last_seen_at)
+        for r in rows
+    ]
 
 
 @router.get("/{diagram_id}/activity", response_model=list[schemas.ActivityOut])
@@ -214,4 +217,7 @@ def list_activity(
         .limit(50)
         .all()
     )
-    return [schemas.ActivityOut(email=r.user.email, message=r.message, created_at=r.created_at) for r in rows]
+    return [
+        schemas.ActivityOut(email=r.user.email, username=r.user.username, message=r.message, created_at=r.created_at)
+        for r in rows
+    ]

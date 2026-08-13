@@ -1,4 +1,4 @@
-import { Moon, PanelLeftClose, PanelLeftOpen, Share2, Sun, User } from "lucide-react";
+import { Moon, PanelLeftClose, PanelLeftOpen, Save, Share2, Sun, User } from "lucide-react";
 
 import Logo from "./Logo";
 import { Button } from "./ui/button";
@@ -46,6 +46,7 @@ export default function MenuBar({
   diagramName,
   onNameChange,
   savedAt,
+  saving,
   onBack,
   onNew,
   onSave,
@@ -90,6 +91,7 @@ export default function MenuBar({
   isOwner = true,
   collaboratorBadge,
   user,
+  onShowProfile,
   onLogout,
 }) {
   return (
@@ -112,7 +114,6 @@ export default function MenuBar({
           onChange={(e) => onNameChange(e.target.value)}
           className="h-7 w-56 border-transparent bg-transparent px-1 font-sans text-sm font-semibold shadow-none hover:border-border"
         />
-        {savedAt && <span className="font-mono text-[11px] text-[color:var(--success)]">Saved {savedAt}</span>}
         {collaboratorBadge}
         <div className="flex-1" />
         {isOwner && (
@@ -141,6 +142,8 @@ export default function MenuBar({
               <span className="truncate font-sans text-xs font-semibold text-foreground">{user?.username || user?.email}</span>
               {user?.username && <span className="truncate text-[9px] text-muted-foreground">{user.email}</span>}
             </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onShowProfile}>Profile</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onLogout}>Logout</DropdownMenuItem>
           </DropdownMenuContent>
@@ -256,6 +259,11 @@ export default function MenuBar({
           <DropdownMenuItem onClick={onShowShortcuts}>Keyboard shortcuts</DropdownMenuItem>
           <DropdownMenuItem onClick={onShowAbout}>About</DropdownMenuItem>
         </MenuButton>
+        <div className="flex-1" />
+        {savedAt && <span className="font-mono text-[11px] text-[color:var(--success)]">Saved {savedAt}</span>}
+        <Button size="sm" variant="ghost" className="h-6 gap-1.5 px-2" onClick={onSave} disabled={saving}>
+          <Save className="h-3.5 w-3.5" /> {saving ? "Saving…" : "Save"}
+        </Button>
       </div>
     </div>
   );
