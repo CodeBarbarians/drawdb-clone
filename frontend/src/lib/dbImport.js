@@ -151,3 +151,81 @@ export function parseImport(source, format, dbType) {
 
   return { tables, relationships };
 }
+
+/**
+ * Merges a freshly-parsed import model into the diagram's current model:
+ * tables are matched by name (case-insensitive) — matches keep their
+ * existing id/position/color, and their columns are updated from the
+ * imported definition while preserving the id of any column whose name
+ * survives the update (so relationships to that column don't dangle).
+ * Unmatched imported tables are appended below the existing layout ("add").
+ * Existing relationships are kept unless they point at a column that an
+ * update removed; imported relationships are remapped onto the resolved
+ * table ids and de-duplicated against ones already kept.
+ */
+export function mergeModels(existingModel, importedModel) {
+  const existingByName = new Map(existingModel.tables.map((t) => [t.name.trim().toLowerCase(), t]));
+  const tableIdMap = new Map();
+  const columnIdMap = new Map();
+  const touchedIds = new Set();
+
+  const maxY = existingModel.tables.reduce((m, t) => Math.max(m, t.position?.y || 0), 0);
+  const yOffset = existingModel.tables.length ? maxY + 360 : 0;
+
+  const mergedTables = importedModel.tables.map((t) => {
+    const existing = existingByName.get(t.name.trim().toLowerCase());
+    if (existing) {
+      tableIdMap.set(t.id, existing.id);
+      touchedIds.add(existing.id);
+      const existingColsByName = new Map(existing.columns.map((c) => [c.name.trim().toLowerCase(), c]));
+      const columns = t.columns.map((c) => {
+        const match = existingColsByName.get(c.name.trim().toLowerCase());
+        if (match) columnIdMap.set(c.id, match.id);
+        return match ? { ...c, id: match.id } : c;
+      });
+      return {
+        ...t,
+        id: existing.id,
+        position: existing.position,
+        color: existing.color,
+        hidden: existing.hidden,
+        locked: existing.locked,
+        columns,
+      };
+    }
+    tableIdMap.set(t.id, t.id);
+    touchedIds.add(t.id);
+    return { ...t, position: { x: t.position.x, y: t.position.y + yOffset } };
+  });
+
+  const keptTables = existingModel.tables.filter((t) => !touchedIds.has(t.id));
+
+  const validColumnIds = new Set();
+  for (const t of [...keptTables, ...mergedTables]) {
+    for (const c of t.columns) validColumnIds.add(c.id);
+  }
+
+  const keptRelationships = existingModel.relationships.filter(
+    (r) => validColumnIds.has(r.sourceColumnId) && validColumnIds.has(r.targetColumnId)
+  );
+
+  const remappedRelationships = importedModel.relationships.map((r) => ({
+    ...r,
+    sourceTableId: tableIdMap.get(r.sourceTableId) || r.sourceTableId,
+    targetTableId: tableIdMap.get(r.targetTableId) || r.targetTableId,
+    sourceColumnId: columnIdMap.get(r.sourceColumnId) || r.sourceColumnId,
+    targetColumnId: columnIdMap.get(r.targetColumnId) || r.targetColumnId,
+  }));
+
+  // A relationship that already survived via keptRelationships (e.g. the
+  // import re-declares an FK that hadn't changed) would otherwise be
+  // duplicated as a second edge between the same two columns.
+  const keyOf = (r) => `${r.sourceColumnId}:${r.targetColumnId}`;
+  const keptKeys = new Set(keptRelationships.map(keyOf));
+  const newRelationships = remappedRelationships.filter((r) => !keptKeys.has(keyOf(r)));
+
+  return {
+    tables: [...keptTables, ...mergedTables],
+    relationships: [...keptRelationships, ...newRelationships],
+  };
+}

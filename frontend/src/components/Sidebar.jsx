@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeftRight, ChevronDown, Eye, EyeOff, Lock, Plus, Search, Trash2, Unlock } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, Eye, EyeOff, Lock, Plus, Search, Trash2, Unlock, Upload } from "lucide-react";
 
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import { ColumnOptionsPopover, NullableToggle, PkToggle } from "./ColumnControls";
 import RelationshipDialog from "./RelationshipDialog";
 import { CARDINALITIES, CARDINALITY_LABELS, CONSTRAINTS, DB_TYPES } from "../lib/dbTypes";
@@ -236,6 +242,7 @@ export default function Sidebar({
   globalLocked,
   detached,
   onAddTable,
+  onImportFormat,
   onSelectTable,
   onToggleTableVisibility,
   onToggleTableLock,
@@ -329,6 +336,23 @@ export default function Sidebar({
             >
               <Plus className="h-3.5 w-3.5" /> Table
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0 border-dashed text-muted-foreground hover:text-foreground"
+                  title="Bulk add / update tables from a script"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => onImportFormat("postgres")}>SQL script</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onImportFormat("dbml")}>DBML script</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onImportFormat("json")}>JSON script</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           <div className="flex flex-col gap-1.5">

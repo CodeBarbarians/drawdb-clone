@@ -32,6 +32,7 @@ import { generateDBML } from "../lib/dbmlExport";
 import { computeProblems } from "../lib/problems";
 import { autoLayout } from "../lib/autoLayout";
 import { defaultRelationshipName, inferCardinality, makeColumn, makeTable, nextId } from "../lib/dbTypes";
+import { mergeModels } from "../lib/dbImport";
 
 const nodeTypes = { table: TableNode };
 const HISTORY_LIMIT = 50;
@@ -461,17 +462,22 @@ export default function EditorPage() {
     URL.revokeObjectURL(url);
   };
 
-  const handleImportApply = (model, targetDbType) => {
+  const handleImportApply = (model, targetDbType, mode) => {
     pushHistory();
-    setDbType(targetDbType);
-    setNodes(model.tables.map((t) => tableToNode(t, targetDbType, tableWidth, handlers)));
-    setEdges(model.relationships.map(relationshipToEdge));
+    // "merge" keeps the diagram's existing dbType — parseImport already
+    // normalized the imported columns' types to it, so switching dbType here
+    // would desync the diagram's dialect from the columns' actual types.
+    const finalDbType = mode === "replace" ? targetDbType : dbType;
+    const finalModel = mode === "replace" ? model : mergeModels(buildDiagramModel(), model);
+    setDbType(finalDbType);
+    setNodes(finalModel.tables.map((t) => tableToNode(t, finalDbType, tableWidth, handlers)));
+    setEdges(finalModel.relationships.map(relationshipToEdge));
     setImportOpen(false);
     setImportPreset(null);
     setTimeout(() => rfInstance.current?.fitView(), 50);
     // Save the freshly-imported model directly rather than relying on
     // component state (which hasn't re-rendered yet) or the autosave debounce.
-    saveModel(model, targetDbType, diagramName);
+    saveModel(finalModel, finalDbType, diagramName);
   };
 
   const openImport = (format) => {
@@ -851,6 +857,7 @@ export default function EditorPage() {
               globalLocked={globalLocked}
               detached={sidebarDetached}
               onAddTable={addTable}
+              onImportFormat={openImport}
               onSelectTable={selectTable}
               onToggleTableVisibility={toggleTableVisibility}
               onToggleTableLock={toggleTableLock}
@@ -979,6 +986,7 @@ export default function EditorPage() {
       {importOpen && (
         <ImportModal
           hasExistingTables={nodes.length > 0}
+          currentDbType={dbType}
           initialFormat={importPreset}
           onImport={handleImportApply}
           onClose={() => {
