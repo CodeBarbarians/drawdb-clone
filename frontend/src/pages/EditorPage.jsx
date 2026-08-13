@@ -10,7 +10,7 @@ import ReactFlow, {
   useUpdateNodeInternals,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { Lock as LockIcon, Map, Maximize, Wand2, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowLeft, Lock as LockIcon, Map, Maximize, Wand2, ZoomIn, ZoomOut } from "lucide-react";
 
 import client from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -125,6 +125,7 @@ export default function EditorPage() {
   const [accessList, setAccessList] = useState([]);
   const [activityList, setActivityList] = useState([]);
   const [isOwner, setIsOwner] = useState(true);
+  const [canEdit, setCanEdit] = useState(true);
   const {
     users: presenceUsers,
     selfId,
@@ -249,6 +250,7 @@ export default function EditorPage() {
       setShareToken(data.share_token || null);
       setShareMode(data.share_mode || "readonly");
       setIsOwner(data.is_owner !== false);
+      setCanEdit(data.can_edit !== false);
       setNodes(tables.map((t) => tableToNode(t, data.db_type, tableWidth, handlers)));
       setEdges(relationships.map(relationshipToEdge));
       setPast([]);
@@ -424,17 +426,17 @@ export default function EditorPage() {
     [id]
   );
 
-  const handleSave = useCallback(
-    () => saveModel(buildDiagramModel(), dbType, diagramName),
-    [saveModel, buildDiagramModel, dbType, diagramName]
-  );
+  const handleSave = useCallback(() => {
+    if (!canEdit) return;
+    return saveModel(buildDiagramModel(), dbType, diagramName);
+  }, [saveModel, buildDiagramModel, dbType, diagramName, canEdit]);
 
   useEffect(() => {
-    if (!autoSave || loading) return;
+    if (!autoSave || loading || !canEdit) return;
     const t = setTimeout(() => handleSave(), 1500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoSave, loading, nodes, edges, dbType, diagramName]);
+  }, [autoSave, loading, canEdit, nodes, edges, dbType, diagramName]);
 
   const handleExport = () => setExportSql(generateSQL(buildDiagramModel(), dbType));
   const handleExportDialect = (dialect) => setExportSql(generateSQL(buildDiagramModel(), dialect));
@@ -704,6 +706,64 @@ export default function EditorPage() {
   );
 
   if (loading) return <div className="editor-loading">Loading diagram…</div>;
+
+  if (!canEdit) {
+    const readOnlyNodes = nodes.map((n) => ({
+      ...n,
+      draggable: false,
+      data: {
+        ...n.data,
+        table: { ...n.data.table, locked: true },
+        globalLocked: true,
+        onUpdateTable: () => {},
+        onDeleteTable: () => {},
+        onAddColumn: () => {},
+        onUpdateColumn: () => {},
+        onDeleteColumn: () => {},
+        onToggleLock: () => {},
+      },
+    }));
+
+    return (
+      <ReactFlowProvider>
+        <div className="editor">
+          <div className="flex items-center gap-3 border-b border-border bg-[color:var(--bg-elevated)] px-4 py-2">
+            <Button variant="ghost" size="icon" title="Back to user management" onClick={() => navigate("/admin/users")}>
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <span className="font-sans text-sm font-semibold">{diagramName}</span>
+            <span className="rounded-full border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              View only
+            </span>
+          </div>
+          <div className="flex flex-1 overflow-hidden">
+            <div className="editor__canvas relative flex-1">
+              <ReactFlow
+                nodes={readOnlyNodes}
+                edges={edges}
+                nodeTypes={nodeTypes}
+                nodesDraggable={false}
+                nodesConnectable={false}
+                elementsSelectable={false}
+                minZoom={0.02}
+                maxZoom={4}
+                onlyRenderVisibleElements
+                fitView
+              >
+                <Background />
+                <MiniMap
+                  bgColor="var(--bg-elevated)"
+                  maskColor="rgba(15, 13, 10, 0.6)"
+                  nodeColor={(node) => node.data?.table?.color || "var(--accent)"}
+                  nodeStrokeColor="var(--border)"
+                />
+              </ReactFlow>
+            </div>
+          </div>
+        </div>
+      </ReactFlowProvider>
+    );
+  }
 
   return (
     <ReactFlowProvider>

@@ -310,6 +310,148 @@ select {
   font-size: 10px;
 }
 
+/* ---------- Admin ---------- */
+.admin {
+  padding: 32px 40px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.admin__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 28px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.admin__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin__title h1 {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.admin__empty {
+  color: var(--text-mute);
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.admin-table th {
+  text-align: left;
+  padding: 10px 16px;
+  font-family: "Space Mono", monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-mute);
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-table td {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  vertical-align: middle;
+}
+
+.admin-table tr:last-child td {
+  border-bottom: none;
+}
+
+.admin-table__actions {
+  text-align: right;
+}
+
+.admin-table__expand {
+  width: 32px;
+  padding-right: 0;
+}
+
+.admin-table__expand-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--text-mute);
+}
+
+.admin-table__expand-btn:hover {
+  background: var(--bg-panel);
+  color: var(--foreground);
+}
+
+.admin-table__diagram-row td {
+  background: var(--bg-elevated);
+  padding-top: 6px;
+  padding-bottom: 6px;
+  font-size: 12.5px;
+}
+
+.admin-table__diagram-name {
+  padding-left: 28px !important;
+  color: var(--text-dim);
+}
+
+.admin-table__diagram-name::before {
+  content: "↳";
+  margin-right: 6px;
+  color: var(--text-mute);
+}
+
+.admin-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.admin-pagination__info {
+  font-family: "Space Mono", monospace;
+  font-size: 11px;
+  color: var(--text-mute);
+}
+
+.admin-pagination__controls {
+  display: flex;
+  gap: 8px;
+}
+
+.admin-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-panel);
+  font-family: "Space Mono", monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+.admin-badge--admin {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
 /* ---------- Editor ---------- */
 .editor {
   height: 100vh;

@@ -100,6 +100,9 @@ export default function DashboardPage() {
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setShowProfile(true)}>Profile</DropdownMenuItem>
+              {user?.is_admin && (
+                <DropdownMenuItem onClick={() => navigate("/admin/users")}>User Management</DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={logout}>Logout</DropdownMenuItem>
             </DropdownMenuContent>

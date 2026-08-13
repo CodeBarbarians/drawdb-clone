@@ -7,9 +7,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import models
+from .auth import hash_password
 from .config import settings
-from .database import Base, engine
-from .routers import auth, diagrams, oauth, presence, public
+from .database import Base, SessionLocal, engine
+from .routers import admin, auth, diagrams, oauth, presence, public
 
 Base.metadata.create_all(bind=engine)
 
@@ -118,11 +119,44 @@ def _run_migrations() -> None:
             conn.execute(text("ALTER TABLE users ADD COLUMN username VARCHAR(50)"))
             conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users (username)"))
 
+    if "is_admin" not in user_columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT 0"))
+
     with engine.begin() as conn:
         _backfill_usernames(conn)
 
 
+def _seed_admin_user() -> None:
+    db = SessionLocal()
+    try:
+        email = "admin@codebarbarians.com"
+        user = db.query(models.User).filter(models.User.email == email).first()
+        if user:
+            if not user.is_admin:
+                user.is_admin = True
+                db.commit()
+            return
+
+        username = "admin"
+        if db.query(models.User).filter(models.User.username == username).first():
+            username = None
+
+        db.add(
+            models.User(
+                username=username,
+                email=email,
+                hashed_password=hash_password("P@ssw0rd@123"),
+                is_admin=True,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
 _run_migrations()
+_seed_admin_user()
 
 app = FastAPI(title="drawdb-clone API")
 
@@ -139,6 +173,7 @@ app.include_router(oauth.router)
 app.include_router(diagrams.router)
 app.include_router(public.router)
 app.include_router(presence.router)
+app.include_router(admin.router)
 
 
 @app.get("/health")

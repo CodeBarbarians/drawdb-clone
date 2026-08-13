@@ -19,7 +19,42 @@ class UserOut(BaseModel):
     id: int
     username: str | None = None
     email: EmailStr
+    is_admin: bool = False
     created_at: datetime
+
+
+class AdminDiagramOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    db_type: str
+    updated_at: datetime
+
+
+class AdminUserCreate(BaseModel):
+    username: str | None = Field(default=None, min_length=2, max_length=50, pattern=r"^[a-zA-Z0-9_.-]+$")
+    email: EmailStr
+    password: str = Field(min_length=8)
+    is_admin: bool = False
+
+
+class AdminUserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str | None = None
+    email: EmailStr
+    is_admin: bool = False
+    created_at: datetime
+    diagrams: list[AdminDiagramOut] = []
+
+
+class AdminUserListOut(BaseModel):
+    items: list[AdminUserOut]
+    total: int
+    page: int
+    page_size: int
 
 
 class Token(BaseModel):
@@ -50,6 +85,7 @@ class DiagramOut(BaseModel):
     share_token: str | None = None
     share_mode: str = "readonly"
     is_owner: bool = True
+    can_edit: bool = True
     created_at: datetime
     updated_at: datetime
 

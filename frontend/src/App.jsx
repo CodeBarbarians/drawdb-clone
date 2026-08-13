@@ -1,5 +1,6 @@
 import { Navigate, Route, BrowserRouter, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import AdminUsersPage from "./pages/AdminUsersPage";
 import DashboardPage from "./pages/DashboardPage";
 import EditorPage from "./pages/EditorPage";
 import LoginPage from "./pages/LoginPage";
@@ -10,6 +11,13 @@ import RegisterPage from "./pages/RegisterPage";
 function RequireAuth({ children }) {
   const { token } = useAuth();
   if (!token) return <Navigate to="/login" replace />;
+  return children;
+}
+
+function RequireAdmin({ children }) {
+  const { token, user } = useAuth();
+  if (!token) return <Navigate to="/login" replace />;
+  if (!user?.is_admin) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -34,6 +42,14 @@ function AppRoutes() {
           <RequireAuth>
             <EditorPage />
           </RequireAuth>
+        }
+      />
+      <Route
+        path="/admin/users"
+        element={
+          <RequireAdmin>
+            <AdminUsersPage />
+          </RequireAdmin>
         }
       />
       <Route path="*" element={<Navigate to="/" replace />} />

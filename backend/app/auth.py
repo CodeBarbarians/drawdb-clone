@@ -62,3 +62,9 @@ def get_current_user_optional(
     if token is None:
         return None
     return decode_user_from_token(token, db)
+
+
+def require_admin(user: models.User = Depends(get_current_user)) -> models.User:
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    return user

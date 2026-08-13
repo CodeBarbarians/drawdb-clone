@@ -49,17 +49,20 @@ def _get_owned_diagram(diagram_id: str, db: Session, user: models.User) -> model
     return diagram
 
 
-def _get_accessible_diagram(diagram_id: str, db: Session, user: models.User) -> tuple[models.Diagram, bool]:
-    """Owner always has access. Any logged-in user gets access when the diagram
-    has an active editable share link — matches the 'anyone with the link who
-    logs in can edit' model rather than a per-user invite/approval flow."""
+def _get_accessible_diagram(diagram_id: str, db: Session, user: models.User) -> tuple[models.Diagram, bool, bool]:
+    """Owner always has full access. Any logged-in user gets edit access when the
+    diagram has an active editable share link — matches the 'anyone with the link
+    who logs in can edit' model rather than a per-user invite/approval flow. Admins
+    can open any diagram to view it for oversight, but can't edit someone else's."""
     diagram = db.query(models.Diagram).filter(models.Diagram.id == diagram_id).first()
     if not diagram:
         raise HTTPException(status_code=404, detail="Diagram not found")
     if diagram.owner_id == user.id:
-        return diagram, True
+        return diagram, True, True
     if diagram.share_token and diagram.share_mode == "editable":
-        return diagram, False
+        return diagram, False, True
+    if user.is_admin:
+        return diagram, False, False
     raise HTTPException(status_code=404, detail="Diagram not found")
 
 
@@ -100,10 +103,11 @@ def get_diagram(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
-    diagram, is_owner = _get_accessible_diagram(diagram_id, db, user)
-    if not is_owner:
+    diagram, is_owner, can_edit = _get_accessible_diagram(diagram_id, db, user)
+    if not is_owner and can_edit:
         _record_access(db, diagram.id, user.id)
     diagram.is_owner = is_owner
+    diagram.can_edit = can_edit
     return diagram
 
 
@@ -114,7 +118,9 @@ async def update_diagram(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
-    diagram, is_owner = _get_accessible_diagram(diagram_id, db, user)
+    diagram, is_owner, can_edit = _get_accessible_diagram(diagram_id, db, user)
+    if not can_edit:
+        raise HTTPException(status_code=403, detail="You don't have permission to edit this diagram")
     before_data = dict(diagram.data) if diagram.data else {}
     changes = payload.model_dump(exclude_unset=True)
     for field, value in changes.items():
@@ -127,6 +133,7 @@ async def update_diagram(
         _record_activity(db, diagram, user, before_data)
         await manager.broadcast_update(diagram.id, user.id)
     diagram.is_owner = is_owner
+    diagram.can_edit = can_edit
     return diagram
 
 
@@ -137,6 +144,14 @@ def delete_diagram(
     user: models.User = Depends(get_current_user),
 ):
     diagram = _get_owned_diagram(diagram_id, db, user)
+    # DiagramAccess/DiagramActivity reference diagram_id directly with no ORM
+    # cascade, so they'd otherwise dangle after the diagram is gone.
+    db.query(models.DiagramActivity).filter(models.DiagramActivity.diagram_id == diagram.id).delete(
+        synchronize_session=False
+    )
+    db.query(models.DiagramAccess).filter(models.DiagramAccess.diagram_id == diagram.id).delete(
+        synchronize_session=False
+    )
     db.delete(diagram)
     db.commit()
 
@@ -209,7 +224,7 @@ def list_activity(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
-    diagram, _ = _get_accessible_diagram(diagram_id, db, user)
+    diagram, _, _ = _get_accessible_diagram(diagram_id, db, user)
     rows = (
         db.query(models.DiagramActivity)
         .filter(models.DiagramActivity.diagram_id == diagram.id)
