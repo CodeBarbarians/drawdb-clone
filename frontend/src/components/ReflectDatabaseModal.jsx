@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import client from "../api/client";
+import { API_BASE_URL } from "../api/client";
 import { buildModelFromReflection } from "../lib/dbReflectImport";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
@@ -44,8 +44,14 @@ export default function ReflectDatabaseModal({ hasExistingTables, onImport, onCl
   const [mode, setMode] = useState("merge");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [logs, setLogs] = useState([]);
+  const logEndRef = useRef(null);
 
   const selectedDialect = DIALECTS.find((d) => d.key === dialect);
+
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ block: "nearest" });
+  }, [logs]);
 
   const handleFetch = async () => {
     setError("");
@@ -54,17 +60,59 @@ export default function ReflectDatabaseModal({ hasExistingTables, onImport, onCl
       return;
     }
     setLoading(true);
+    setLogs([]);
     try {
-      const { data } = await client.post("/reflect", { connection_string: connectionString.trim() });
-      // The frontend has no dedicated dialect for SAP HANA, so diagrams
-      // reflected from it fall back to the PostgreSQL column-type list —
-      // the columns still carry their real type strings, just without
-      // dialect-specific dropdown suggestions.
-      const targetDbType = dialect === "hana" ? "postgresql" : dialect;
-      const model = buildModelFromReflection(data, targetDbType);
-      onImport(model, targetDbType, mode);
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE_URL}/reflect`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ connection_string: connectionString.trim() }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.detail || `Request failed (${res.status})`);
+      }
+
+      // The backend streams newline-delimited SSE "data: {...}" frames as it
+      // works through each table, rather than one response at the very end —
+      // so the reader has to be drained incrementally instead of awaited whole.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let settled = false;
+
+      while (!settled) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop();
+        for (const frame of frames) {
+          const line = frame.trim();
+          if (!line.startsWith("data:")) continue;
+          const event = JSON.parse(line.slice(5).trim());
+          if (event.type === "log") {
+            setLogs((prev) => [...prev, event.message]);
+          } else if (event.type === "result") {
+            // The frontend has no dedicated dialect for SAP HANA, so diagrams
+            // reflected from it fall back to the PostgreSQL column-type list —
+            // the columns still carry their real type strings, just without
+            // dialect-specific dropdown suggestions.
+            const targetDbType = dialect === "hana" ? "postgresql" : dialect;
+            const model = buildModelFromReflection(event.data, targetDbType);
+            onImport(model, targetDbType, mode);
+            settled = true;
+          } else if (event.type === "error") {
+            setError(event.message);
+            settled = true;
+          }
+        }
+      }
     } catch (err) {
-      setError(err.response?.data?.detail || err.message || "Could not read the schema.");
+      setError(err.message || "Could not read the schema.");
     } finally {
       setLoading(false);
     }
@@ -119,6 +167,20 @@ export default function ReflectDatabaseModal({ hasExistingTables, onImport, onCl
                   ? "Every table currently on the canvas will be removed and replaced by the reflected schema."
                   : "New tables are added; tables with a matching name have their columns updated in place."}
               </p>
+            </div>
+          )}
+
+          {logs.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                {loading ? "Processing…" : "Log"}
+              </span>
+              <div className="max-h-40 overflow-y-auto rounded-md border border-border bg-muted/30 px-3 py-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
+                {logs.map((line, i) => (
+                  <div key={i}>{line}</div>
+                ))}
+                <div ref={logEndRef} />
+              </div>
             </div>
           )}
 
