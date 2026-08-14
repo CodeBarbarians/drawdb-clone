@@ -138,3 +138,21 @@ class ActivityOut(BaseModel):
     username: str | None = None
     message: str
     created_at: datetime
+
+
+class DiagramVersionCreate(BaseModel):
+    name: str | None = Field(default=None, max_length=255)
+
+
+class DiagramVersionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str | None = None
+    email: EmailStr
+    username: str | None = None
+    created_at: datetime
+
+
+class ReflectRequest(BaseModel):
+    connection_string: str = Field(min_length=1)

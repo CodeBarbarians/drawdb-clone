@@ -65,7 +65,7 @@ const TYPE_ALIASES = {
 // MariaDB's type surface is close enough to MySQL's to reuse the same aliases.
 TYPE_ALIASES.mariadb = TYPE_ALIASES.mysql;
 
-function normalizeType(rawType, dbType) {
+export function normalizeType(rawType, dbType) {
   const aliases = TYPE_ALIASES[dbType] || TYPE_ALIASES.postgresql;
   for (const [pattern, canonical] of aliases) {
     if (pattern.test(rawType)) return canonical;

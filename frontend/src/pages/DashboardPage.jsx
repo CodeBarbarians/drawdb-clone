@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Moon, Sun, Trash2, User } from "lucide-react";
+import { ChevronDown, Moon, Sun, Trash2, User } from "lucide-react";
 import client from "../api/client";
 import Logo from "../components/Logo";
 import ProfileDrawer from "../components/ProfileDrawer";
+import TemplateGalleryModal from "../components/TemplateGalleryModal";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,6 +36,7 @@ export default function DashboardPage() {
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
   const [showProfile, setShowProfile] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -52,7 +54,28 @@ export default function DashboardPage() {
     load();
   }, []);
 
-  const createDiagram = async () => {
+  const createDiagram = async (name, diagramData) => {
+    setCreating(true);
+    try {
+      const { data } = await client.post("/diagrams", {
+        name,
+        db_type: "postgresql",
+        data: diagramData,
+      });
+      navigate(`/editor/${data.id}`);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const createBlankDiagram = () => createDiagram("Untitled Diagram", { tables: [], relationships: [] });
+
+  const createFromTemplate = (template) => {
+    setShowTemplates(false);
+    createDiagram(template.name, template.build());
+  };
+
+  const createFromDatabase = async () => {
     setCreating(true);
     try {
       const { data } = await client.post("/diagrams", {
@@ -60,7 +83,7 @@ export default function DashboardPage() {
         db_type: "postgresql",
         data: { tables: [], relationships: [] },
       });
-      navigate(`/editor/${data.id}`);
+      navigate(`/editor/${data.id}?reflect=1`);
     } finally {
       setCreating(false);
     }
@@ -110,10 +133,22 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <div className="dashboard__toolbar">
-        <Button onClick={createDiagram} disabled={creating}>
+      <div className="dashboard__toolbar flex items-center gap-0.5">
+        <Button onClick={createBlankDiagram} disabled={creating} className="rounded-r-none">
           {creating ? "Creating…" : "+ New Diagram"}
         </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button disabled={creating} className="rounded-l-none border-l border-l-black/20 px-2">
+              <ChevronDown className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem onClick={createBlankDiagram}>Blank diagram</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setShowTemplates(true)}>From template…</DropdownMenuItem>
+            <DropdownMenuItem onClick={createFromDatabase}>From database connection…</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {loading ? (
@@ -154,6 +189,8 @@ export default function DashboardPage() {
       )}
 
       <ProfileDrawer open={showProfile} onOpenChange={setShowProfile} />
+
+      <TemplateGalleryModal open={showTemplates} onOpenChange={setShowTemplates} onSelect={createFromTemplate} />
 
       <AlertDialog open={pendingDeleteId !== null} onOpenChange={(open) => !open && setPendingDeleteId(null)}>
         <AlertDialogContent>

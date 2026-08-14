@@ -10,7 +10,7 @@ from . import models
 from .auth import hash_password
 from .config import settings
 from .database import Base, SessionLocal, engine
-from .routers import admin, auth, diagrams, oauth, presence, public
+from .routers import admin, auth, diagrams, oauth, presence, public, reflect
 
 Base.metadata.create_all(bind=engine)
 
@@ -174,6 +174,7 @@ app.include_router(diagrams.router)
 app.include_router(public.router)
 app.include_router(presence.router)
 app.include_router(admin.router)
+app.include_router(reflect.router)
 
 
 @app.get("/health")

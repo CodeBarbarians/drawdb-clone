@@ -58,9 +58,11 @@ export default function MenuBar({
   onSaveAs,
   onDeleteDiagram,
   onImportFormat,
+  onReflectDatabase,
   onExportSQL,
   onExportJSON,
   onExportDBML,
+  onExportImage,
   onUndo,
   onRedo,
   canUndo,
@@ -180,6 +182,7 @@ export default function MenuBar({
             <DropdownMenuSubContent>
               <DropdownMenuItem onClick={() => onImportFormat("dbml")}>DBML</DropdownMenuItem>
               <DropdownMenuItem onClick={() => onImportFormat("json")}>JSON</DropdownMenuItem>
+              <DropdownMenuItem onClick={onReflectDatabase}>Database connection…</DropdownMenuItem>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
           <DropdownMenuSub>
@@ -208,8 +211,9 @@ export default function MenuBar({
             <DropdownMenuSubContent>
               <DropdownMenuItem onClick={onExportJSON}>JSON</DropdownMenuItem>
               <DropdownMenuItem onClick={onExportDBML}>DBML</DropdownMenuItem>
-              <DropdownMenuItem disabled>PNG</DropdownMenuItem>
-              <DropdownMenuItem disabled>SVG</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onExportImage("png")}>PNG</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onExportImage("svg")}>SVG</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onExportImage("pdf")}>PDF</DropdownMenuItem>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
         </MenuButton>

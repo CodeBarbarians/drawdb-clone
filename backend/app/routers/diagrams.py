@@ -1,4 +1,5 @@
 import uuid
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -10,6 +11,9 @@ from ..models import utcnow
 from .presence import manager
 
 router = APIRouter(prefix="/diagrams", tags=["diagrams"])
+
+VERSION_AUTO_SNAPSHOT_INTERVAL = timedelta(minutes=10)
+VERSION_LIMIT = 30
 
 
 @router.get("", response_model=list[schemas.DiagramSummary])
@@ -97,6 +101,38 @@ def _record_activity(db: Session, diagram: models.Diagram, user: models.User, be
     db.commit()
 
 
+def _snapshot_version(db: Session, diagram: models.Diagram, user: models.User, name: str | None = None) -> None:
+    db.add(models.DiagramVersion(diagram_id=diagram.id, user_id=user.id, name=name, data=diagram.data))
+    db.commit()
+    # Keep only the most recent VERSION_LIMIT snapshots per diagram so this
+    # table doesn't grow unbounded — auto-snapshots are throttled but still
+    # accumulate indefinitely over a diagram's lifetime otherwise.
+    ids_to_keep = {
+        row.id
+        for row in db.query(models.DiagramVersion.id)
+        .filter(models.DiagramVersion.diagram_id == diagram.id)
+        .order_by(models.DiagramVersion.created_at.desc())
+        .limit(VERSION_LIMIT)
+        .all()
+    }
+    db.query(models.DiagramVersion).filter(
+        models.DiagramVersion.diagram_id == diagram.id, models.DiagramVersion.id.notin_(ids_to_keep)
+    ).delete(synchronize_session=False)
+    db.commit()
+
+
+def _maybe_auto_snapshot(db: Session, diagram: models.Diagram, user: models.User) -> None:
+    latest = (
+        db.query(models.DiagramVersion)
+        .filter(models.DiagramVersion.diagram_id == diagram.id)
+        .order_by(models.DiagramVersion.created_at.desc())
+        .first()
+    )
+    if latest and utcnow() - latest.created_at < VERSION_AUTO_SNAPSHOT_INTERVAL:
+        return
+    _snapshot_version(db, diagram, user)
+
+
 @router.get("/{diagram_id}", response_model=schemas.DiagramOut)
 def get_diagram(
     diagram_id: str,
@@ -131,6 +167,7 @@ async def update_diagram(
         _record_access(db, diagram.id, user.id)
     if "data" in changes:
         _record_activity(db, diagram, user, before_data)
+        _maybe_auto_snapshot(db, diagram, user)
         await manager.broadcast_update(diagram.id, user.id)
     diagram.is_owner = is_owner
     diagram.can_edit = can_edit
@@ -144,12 +181,15 @@ def delete_diagram(
     user: models.User = Depends(get_current_user),
 ):
     diagram = _get_owned_diagram(diagram_id, db, user)
-    # DiagramAccess/DiagramActivity reference diagram_id directly with no ORM
-    # cascade, so they'd otherwise dangle after the diagram is gone.
+    # DiagramAccess/DiagramActivity/DiagramVersion reference diagram_id directly
+    # with no ORM cascade, so they'd otherwise dangle after the diagram is gone.
     db.query(models.DiagramActivity).filter(models.DiagramActivity.diagram_id == diagram.id).delete(
         synchronize_session=False
     )
     db.query(models.DiagramAccess).filter(models.DiagramAccess.diagram_id == diagram.id).delete(
+        synchronize_session=False
+    )
+    db.query(models.DiagramVersion).filter(models.DiagramVersion.diagram_id == diagram.id).delete(
         synchronize_session=False
     )
     db.delete(diagram)
@@ -236,3 +276,81 @@ def list_activity(
         schemas.ActivityOut(email=r.user.email, username=r.user.username, message=r.message, created_at=r.created_at)
         for r in rows
     ]
+
+
+@router.get("/{diagram_id}/versions", response_model=list[schemas.DiagramVersionOut])
+def list_versions(
+    diagram_id: str,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    diagram, _, _ = _get_accessible_diagram(diagram_id, db, user)
+    rows = (
+        db.query(models.DiagramVersion)
+        .filter(models.DiagramVersion.diagram_id == diagram.id)
+        .order_by(models.DiagramVersion.created_at.desc())
+        .all()
+    )
+    return [
+        schemas.DiagramVersionOut(
+            id=r.id, name=r.name, email=r.user.email, username=r.user.username, created_at=r.created_at
+        )
+        for r in rows
+    ]
+
+
+@router.post("/{diagram_id}/versions", response_model=schemas.DiagramVersionOut, status_code=201)
+def create_version(
+    diagram_id: str,
+    payload: schemas.DiagramVersionCreate = schemas.DiagramVersionCreate(),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    diagram, _, can_edit = _get_accessible_diagram(diagram_id, db, user)
+    if not can_edit:
+        raise HTTPException(status_code=403, detail="You don't have permission to edit this diagram")
+    # A manual checkpoint always creates a new snapshot, bypassing the
+    # auto-snapshot throttle — it's an explicit request, not a routine save.
+    _snapshot_version(db, diagram, user, name=payload.name or "Checkpoint")
+    version = (
+        db.query(models.DiagramVersion)
+        .filter(models.DiagramVersion.diagram_id == diagram.id)
+        .order_by(models.DiagramVersion.created_at.desc())
+        .first()
+    )
+    return schemas.DiagramVersionOut(
+        id=version.id, name=version.name, email=user.email, username=user.username, created_at=version.created_at
+    )
+
+
+@router.post("/{diagram_id}/versions/{version_id}/restore", response_model=schemas.DiagramOut)
+async def restore_version(
+    diagram_id: str,
+    version_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    diagram, is_owner, can_edit = _get_accessible_diagram(diagram_id, db, user)
+    if not can_edit:
+        raise HTTPException(status_code=403, detail="You don't have permission to edit this diagram")
+    version = (
+        db.query(models.DiagramVersion)
+        .filter(models.DiagramVersion.id == version_id, models.DiagramVersion.diagram_id == diagram.id)
+        .first()
+    )
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+
+    # Snapshot the current state first so restoring never loses history —
+    # the user can always get back to what they had before the restore.
+    _snapshot_version(db, diagram, user, name="Before restore")
+    diagram.data = version.data
+    db.commit()
+    db.refresh(diagram)
+    label = version.name or version.created_at.strftime("%b %d, %Y %H:%M")
+    db.add(models.DiagramActivity(diagram_id=diagram.id, user_id=user.id, message=f"Restored version from {label}"))
+    db.commit()
+    await manager.broadcast_update(diagram.id, user.id)
+    diagram.is_owner = is_owner
+    diagram.can_edit = can_edit
+    return diagram

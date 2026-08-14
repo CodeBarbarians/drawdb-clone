@@ -58,8 +58,9 @@ def delete_user(
         raise HTTPException(status_code=404, detail="User not found")
 
     # Diagram.diagrams cascade only removes the Diagram rows themselves —
-    # DiagramAccess/DiagramActivity reference diagram_id and user_id directly
-    # with no ORM cascade, so they'd otherwise dangle after the user is gone.
+    # DiagramAccess/DiagramActivity/DiagramVersion reference diagram_id and
+    # user_id directly with no ORM cascade, so they'd otherwise dangle after
+    # the user is gone.
     owned_diagram_ids = [
         d.id for d in db.query(models.Diagram.id).filter(models.Diagram.owner_id == user.id)
     ]
@@ -70,11 +71,17 @@ def delete_user(
         db.query(models.DiagramAccess).filter(
             models.DiagramAccess.diagram_id.in_(owned_diagram_ids)
         ).delete(synchronize_session=False)
+        db.query(models.DiagramVersion).filter(
+            models.DiagramVersion.diagram_id.in_(owned_diagram_ids)
+        ).delete(synchronize_session=False)
 
     db.query(models.DiagramActivity).filter(models.DiagramActivity.user_id == user.id).delete(
         synchronize_session=False
     )
     db.query(models.DiagramAccess).filter(models.DiagramAccess.user_id == user.id).delete(
+        synchronize_session=False
+    )
+    db.query(models.DiagramVersion).filter(models.DiagramVersion.user_id == user.id).delete(
         synchronize_session=False
     )
 

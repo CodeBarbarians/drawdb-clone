@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import ReactFlow, {
   Background,
   MiniMap,
@@ -27,9 +27,11 @@ import {
 import client from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import ActivityPanel from "../components/ActivityPanel";
+import VersionHistoryPanel from "../components/VersionHistoryPanel";
 import BottomBar from "../components/BottomBar";
 import ExportModal from "../components/ExportModal";
 import ImportModal from "../components/ImportModal";
+import ReflectDatabaseModal from "../components/ReflectDatabaseModal";
 import MenuBar from "../components/MenuBar";
 import PresenceBar from "../components/PresenceBar";
 import ProfileDrawer from "../components/ProfileDrawer";
@@ -44,6 +46,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { usePresence } from "../hooks/usePresence";
 import { generateSQL } from "../lib/sqlExport";
 import { generateDBML } from "../lib/dbmlExport";
+import { exportDiagramAsImage } from "../lib/imageExport";
 import { computeProblems } from "../lib/problems";
 import { autoLayout } from "../lib/autoLayout";
 import {
@@ -148,6 +151,7 @@ function NodeInternalsSync({ nodes, columnCountsKey }) {
 export default function EditorPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, token: authToken, logout } = useAuth();
 
   const [nodes, setNodes] = useState([]);
@@ -163,6 +167,7 @@ export default function EditorPage() {
   const [exportSql, setExportSql] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
   const [importPreset, setImportPreset] = useState(null);
+  const [reflectOpen, setReflectOpen] = useState(false);
   const [view, setView] = useState("structure");
   const [viewLoading, setViewLoading] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
@@ -205,11 +210,13 @@ export default function EditorPage() {
     </span>
   ) : null;
   const [globalLocked, setGlobalLocked] = useState(false);
+  const [isExportingImage, setIsExportingImage] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
   const [sidebarDetached, setSidebarDetached] = useState(false);
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
   const rfInstance = useRef(null);
+  const canvasRef = useRef(null);
   const modelRef = useRef({ tables: [], relationships: [], notes: [] });
 
   const updateTable = useCallback((tableId, patch) => {
@@ -420,6 +427,22 @@ export default function EditorPage() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remoteUpdate]);
+
+  const handleRestoreVersion = useCallback(
+    (diagram) => {
+      pushHistory();
+      applyModel({
+        tables: diagram.data?.tables || [],
+        relationships: diagram.data?.relationships || [],
+        notes: diagram.data?.notes || [],
+        enums: diagram.data?.enums || [],
+        subjectAreas: diagram.data?.subjectAreas || [],
+      });
+      setDiagramName(diagram.name);
+      setDbType(diagram.db_type);
+    },
+    [pushHistory, applyModel]
+  );
 
   const undo = useCallback(() => {
     setPast((p) => {
@@ -662,6 +685,20 @@ export default function EditorPage() {
     URL.revokeObjectURL(url);
   };
 
+  const handleExportImage = async (format) => {
+    const deselectAll = () => setNodes((nds) => nds.map((n) => (n.selected ? { ...n, selected: false } : n)));
+    // `onlyRenderVisibleElements` normally unmounts nodes outside the pane's
+    // on-screen bounds, which would otherwise leave them out of the capture
+    // entirely once we zoom the viewport to a synthetic export-sized frame.
+    setIsExportingImage(true);
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    try {
+      await exportDiagramAsImage(rfInstance.current, canvasRef.current, format, diagramName || "diagram", deselectAll);
+    } finally {
+      setIsExportingImage(false);
+    }
+  };
+
   const handleImportApply = (model, targetDbType, mode) => {
     pushHistory();
     // "merge" keeps the diagram's existing dbType — parseImport already
@@ -676,6 +713,7 @@ export default function EditorPage() {
     setSubjectAreas(finalModel.subjectAreas || []);
     setImportOpen(false);
     setImportPreset(null);
+    setReflectOpen(false);
     setTimeout(() => rfInstance.current?.fitView(), 50);
     // Save the freshly-imported model directly rather than relying on
     // component state (which hasn't re-rendered yet) or the autosave debounce.
@@ -686,6 +724,21 @@ export default function EditorPage() {
     setImportPreset(format || null);
     setImportOpen(true);
   };
+
+  // "New diagram from a database connection" on the dashboard creates a
+  // blank diagram then lands here with ?reflect=1 to open this modal right
+  // away, instead of the dashboard needing to know anything about the
+  // editor's internal state.
+  useEffect(() => {
+    if (searchParams.get("reflect") === "1") {
+      setReflectOpen(true);
+      setSearchParams((params) => {
+        params.delete("reflect");
+        return params;
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleNew = async () => {
     const { data } = await client.post("/diagrams", {
@@ -1133,9 +1186,11 @@ export default function EditorPage() {
         onSaveAs={handleSaveAs}
         onDeleteDiagram={handleDeleteDiagram}
         onImportFormat={openImport}
+        onReflectDatabase={() => setReflectOpen(true)}
         onExportSQL={handleExportDialect}
         onExportJSON={handleExportJSON}
         onExportDBML={handleExportDBML}
+        onExportImage={handleExportImage}
         onUndo={undo}
         onRedo={redo}
         canUndo={past.length > 0}
@@ -1233,7 +1288,7 @@ export default function EditorPage() {
             />
           </div>
         )}
-        <div className="editor__canvas relative flex-1">
+        <div className="editor__canvas relative flex-1" ref={canvasRef}>
           {/* Kept mounted under the code view (instead of unmounting) so toggling
               Structure/Code doesn't re-mount every table node on large diagrams. */}
           <div className={view === "structure" ? "h-full" : "hidden"}>
@@ -1252,7 +1307,7 @@ export default function EditorPage() {
               nodesConnectable={!globalLocked}
               elementsSelectable={!globalLocked}
               deleteKeyCode={["Backspace", "Delete"]}
-              onlyRenderVisibleElements
+              onlyRenderVisibleElements={!isExportingImage}
               fitView
             >
               <NodeInternalsSync nodes={nodes} columnCountsKey={columnCountsKey} />
@@ -1324,7 +1379,10 @@ export default function EditorPage() {
                 />
               )}
               <div className="absolute right-3 top-3 z-10 flex flex-col items-end gap-2">
-                <ActivityPanel diagramId={id} />
+                <div className="flex gap-2">
+                  <VersionHistoryPanel diagramId={id} canEdit={canEdit} onRestore={handleRestoreVersion} />
+                  <ActivityPanel diagramId={id} />
+                </div>
                 <PresenceBar
                   users={presenceUsers}
                   currentUserId={selfId}
@@ -1389,6 +1447,13 @@ export default function EditorPage() {
             setImportOpen(false);
             setImportPreset(null);
           }}
+        />
+      )}
+      {reflectOpen && (
+        <ReflectDatabaseModal
+          hasExistingTables={nodes.length > 0}
+          onImport={handleImportApply}
+          onClose={() => setReflectOpen(false)}
         />
       )}
       <Dialog open={showShortcuts} onOpenChange={setShowShortcuts}>

@@ -75,3 +75,22 @@ class DiagramActivity(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     user: Mapped["User"] = relationship()
+
+
+class DiagramVersion(Base):
+    """Snapshot of a diagram's data at a point in time, for version history/rollback.
+
+    A None `name` marks an automatic snapshot (taken on save); a named one is a
+    manual checkpoint the user explicitly requested.
+    """
+
+    __tablename__ = "diagram_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    diagram_id: Mapped[str] = mapped_column(ForeignKey("diagrams.id"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    data: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    user: Mapped["User"] = relationship()
