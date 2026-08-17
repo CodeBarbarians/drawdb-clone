@@ -1001,3 +1001,57 @@ select {
 .react-flow__edge.selected .react-flow__edge-path {
   stroke: var(--accent);
 }
+
+/* FK relationship lines (RelationshipEdge.jsx) — a soft steady base stroke
+   plus a dashed overlay animated toward the target, so the line reads as
+   "flowing" in the direction of the relationship rather than sitting static. */
+.relationship-edge__glow {
+  stroke: var(--accent);
+  stroke-width: 1.75px;
+  opacity: 0.55;
+  transition: opacity 120ms ease, stroke-width 120ms ease;
+}
+
+.react-flow__edge:hover .relationship-edge__glow,
+.relationship-edge__glow--selected {
+  stroke-width: 2.5px;
+  opacity: 1;
+}
+
+.relationship-edge__flow {
+  stroke: var(--accent);
+  stroke-width: 1.75px;
+  stroke-dasharray: 6 8;
+  animation: relationship-edge-dash 0.9s linear infinite;
+}
+
+.react-flow__edge:hover .relationship-edge__flow,
+.relationship-edge__flow--selected {
+  stroke-width: 2.5px;
+}
+
+@keyframes relationship-edge-dash {
+  to {
+    stroke-dashoffset: -28;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .relationship-edge__flow {
+    animation: none;
+  }
+}
+
+.relationship-edge__badge {
+  position: absolute;
+  pointer-events: none;
+  background: var(--bg-elevated);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 9999px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 5px;
+}

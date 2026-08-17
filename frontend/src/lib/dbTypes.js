@@ -183,6 +183,15 @@ export const CARDINALITY_LABELS = {
   many_to_one: "Many to one",
 };
 
+// Compact crow's-foot-style labels shown at each end of a relationship line
+// on the canvas — [sourceEndLabel, targetEndLabel]. Mirrors the source/target
+// "one" vs "many" side implied by inferCardinality() below.
+export const CARDINALITY_ENDPOINTS = {
+  one_to_one: ["1", "1"],
+  one_to_many: ["1", "n"],
+  many_to_one: ["n", "1"],
+};
+
 export const CONSTRAINTS = ["No action", "Restrict", "Cascade", "Set null", "Set default"];
 
 // A column only guarantees uniqueness on its own if it's flagged unique, or if

@@ -76,6 +76,25 @@ class ConnectionManager:
             except Exception:
                 pass
 
+    async def broadcast_cursor(self, diagram_id: str, sender: WebSocket, x: float, y: float) -> None:
+        """Relay a live mouse position to everyone else in the room. Unlike
+        presence/viewport this is fire-and-forget — not stored on the
+        connection — since a cursor position is meaningless the moment a new
+        one arrives; the frontend just drops a user's cursor when they drop
+        out of the next presence broadcast."""
+        room = self.rooms.get(diagram_id, {})
+        info = room.get(sender)
+        if info is None:
+            return
+        payload = {"type": "cursor", "user_id": info["user_id"], "x": x, "y": y}
+        for ws in list(room.keys()):
+            if ws is sender:
+                continue
+            try:
+                await ws.send_json(payload)
+            except Exception:
+                pass
+
     async def broadcast_update(self, diagram_id: str, editor_user_id: int) -> None:
         """Tell everyone viewing this diagram that its data changed on the server,
         so followers reload instead of sitting on a stale canvas until they
@@ -101,6 +120,10 @@ async def _run_presence_loop(diagram_id: str, websocket: WebSocket) -> None:
             if msg.get("type") == "viewport":
                 manager.rooms[diagram_id][websocket]["viewport"] = msg.get("viewport")
                 await manager.broadcast_presence(diagram_id)
+            elif msg.get("type") == "cursor":
+                x, y = msg.get("x"), msg.get("y")
+                if isinstance(x, (int, float)) and isinstance(y, (int, float)):
+                    await manager.broadcast_cursor(diagram_id, websocket, x, y)
     except WebSocketDisconnect:
         pass
     finally:

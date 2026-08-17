@@ -34,6 +34,8 @@ import ImportModal from "../components/ImportModal";
 import ReflectDatabaseModal from "../components/ReflectDatabaseModal";
 import MenuBar from "../components/MenuBar";
 import PresenceBar from "../components/PresenceBar";
+import RemoteCursors from "../components/RemoteCursors";
+import RelationshipEdge from "../components/RelationshipEdge";
 import ProfileDrawer from "../components/ProfileDrawer";
 import ShareDialog from "../components/ShareDialog";
 import Sidebar from "../components/Sidebar";
@@ -64,6 +66,7 @@ import {
 import { mergeModels } from "../lib/dbImport";
 
 const nodeTypes = { table: TableNode, note: NoteNode, area: AreaNode };
+const edgeTypes = { relationship: RelationshipEdge };
 const HISTORY_LIMIT = 50;
 const DEFAULT_ZOOM_SPEED = 1.6;
 const DEFAULT_TABLE_WIDTH = 340;
@@ -116,6 +119,7 @@ function areaToNode(area, handlers) {
 function relationshipToEdge(rel) {
   return {
     id: rel.id,
+    type: "relationship",
     source: rel.sourceTableId,
     sourceHandle: rel.sourceColumnId,
     target: rel.targetTableId,
@@ -203,6 +207,8 @@ export default function EditorPage() {
     stopFollowing,
     sendViewport,
     remoteUpdate,
+    cursors,
+    sendCursor,
   } = usePresence({ diagramId: id, token: authToken, enabled: !loading });
   const collaboratorBadge = !isOwner ? (
     <span className="rounded-full border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -800,6 +806,18 @@ export default function EditorPage() {
     }, delay);
   };
 
+  // Broadcasts this tab's mouse position to collaborators (rate-limited
+  // inside sendCursor itself) so they see a live cursor while working the
+  // same diagram. Converted to flow-space coordinates so it stays correctly
+  // placed for viewers at a different pan/zoom than ours.
+  const handlePaneMouseMove = useCallback(
+    (event) => {
+      const flowPos = rfInstance.current?.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      if (flowPos) sendCursor(flowPos.x, flowPos.y);
+    },
+    [sendCursor]
+  );
+
   // React Flow's own zoom in/out buttons apply a fixed 1.2x step with no way
   // to speed it up, so these bypass that and jump zoom level directly.
   const handleZoomIn = () => {
@@ -1149,6 +1167,7 @@ export default function EditorPage() {
                 nodes={readOnlyNodes}
                 edges={edges}
                 nodeTypes={nodeTypes}
+                edgeTypes={edgeTypes}
                 nodesDraggable={false}
                 nodesConnectable={false}
                 elementsSelectable={false}
@@ -1310,7 +1329,9 @@ export default function EditorPage() {
               onConnect={onConnect}
               onInit={(instance) => (rfInstance.current = instance)}
               onMoveEnd={handleMoveEnd}
+              onPaneMouseMove={handlePaneMouseMove}
               nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
               minZoom={0.02}
               maxZoom={4}
               nodesDraggable={!globalLocked}
@@ -1401,6 +1422,7 @@ export default function EditorPage() {
                   onStopFollowing={stopFollowing}
                 />
               </div>
+              <RemoteCursors cursors={cursors} users={presenceUsers} selfId={selfId} />
             </ReactFlow>
           </div>
           {view === "code" && (

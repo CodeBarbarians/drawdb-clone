@@ -10,10 +10,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/
 import { Input } from "../components/ui/input";
 import Logo from "../components/Logo";
 import PresenceBar from "../components/PresenceBar";
+import RelationshipEdge from "../components/RelationshipEdge";
+import RemoteCursors from "../components/RemoteCursors";
 import TableNode from "../components/TableNode";
 import { usePresence } from "../hooks/usePresence";
 
 const nodeTypes = { table: TableNode };
+const edgeTypes = { relationship: RelationshipEdge };
 const noop = () => {};
 const DEFAULT_TABLE_WIDTH = 340;
 const GUEST_NAME_KEY = "guestViewerName";
@@ -75,7 +78,14 @@ export default function PublicViewPage() {
     setFollowUserId,
     stopFollowing,
     remoteUpdate,
+    cursors,
+    sendCursor,
   } = usePresence({ shareToken: token, guestName, enabled: !loading && !!diagram && !!guestName });
+
+  const handlePaneMouseMove = (event) => {
+    const flowPos = rfInstance.current?.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+    if (flowPos) sendCursor(flowPos.x, flowPos.y);
+  };
 
   useEffect(() => {
     if (!followUserId) return;
@@ -146,11 +156,13 @@ export default function PublicViewPage() {
     const relationships = diagram?.data?.relationships || [];
     return relationships.map((rel) => ({
       id: rel.id,
+      type: "relationship",
       source: rel.sourceTableId,
       sourceHandle: rel.sourceColumnId,
       target: rel.targetTableId,
       targetHandle: rel.targetColumnId,
       markerEnd: { type: "arrowclosed" },
+      data: { cardinality: rel.cardinality },
     }));
   }, [diagram]);
 
@@ -188,6 +200,7 @@ export default function PublicViewPage() {
               nodes={nodes}
               edges={edges}
               nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
               nodesDraggable={false}
               nodesConnectable={false}
               elementsSelectable={false}
@@ -196,6 +209,7 @@ export default function PublicViewPage() {
               onlyRenderVisibleElements
               fitView
               onInit={(instance) => (rfInstance.current = instance)}
+              onPaneMouseMove={handlePaneMouseMove}
             >
               <Background />
               <MiniMap
@@ -213,6 +227,7 @@ export default function PublicViewPage() {
                   onStopFollowing={stopFollowing}
                 />
               </div>
+              <RemoteCursors cursors={cursors} users={presenceUsers} selfId={selfId} />
             </ReactFlow>
           </div>
         </div>
