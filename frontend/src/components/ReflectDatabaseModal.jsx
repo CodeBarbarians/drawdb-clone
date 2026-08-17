@@ -8,12 +8,27 @@ import { Input } from "./ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 const DIALECTS = [
-  { key: "postgresql", label: "PostgreSQL", placeholder: "postgresql://user:password@host:5432/dbname" },
-  { key: "mysql", label: "MySQL", placeholder: "mysql://user:password@host:3306/dbname" },
-  { key: "mariadb", label: "MariaDB", placeholder: "mariadb://user:password@host:3306/dbname" },
-  { key: "mssql", label: "SQL Server", placeholder: "mssql://user:password@host:1433/dbname" },
-  { key: "hana", label: "SAP HANA", placeholder: "hana://user:password@host:39015" },
+  { key: "postgresql", label: "PostgreSQL", defaultPort: "5432" },
+  { key: "mysql", label: "MySQL", defaultPort: "3306" },
+  { key: "mariadb", label: "MariaDB", defaultPort: "3306" },
+  { key: "mssql", label: "SQL Server", defaultPort: "1433" },
+  { key: "hana", label: "SAP HANA", defaultPort: "39015" },
 ];
+
+// Builds the same URL-style string the backend's make_url() expects, from
+// discrete fields — user/password are percent-encoded since credentials can
+// contain ':', '@', '/' etc. that would otherwise be parsed as URL syntax.
+function buildConnectionString(dialect, { host, port, database, username, password }) {
+  let auth = "";
+  if (username) {
+    auth = encodeURIComponent(username);
+    if (password) auth += `:${encodeURIComponent(password)}`;
+    auth += "@";
+  }
+  const portPart = port ? `:${port}` : "";
+  const dbPart = database ? `/${database}` : "";
+  return `${dialect}://${auth}${host.trim()}${portPart}${dbPart}`;
+}
 
 function ModeToggle({ mode, onChange, disabled }) {
   return (
@@ -40,23 +55,35 @@ function ModeToggle({ mode, onChange, disabled }) {
 
 export default function ReflectDatabaseModal({ hasExistingTables, onImport, onClose }) {
   const [dialect, setDialect] = useState("postgresql");
-  const [connectionString, setConnectionString] = useState("");
+  const [host, setHost] = useState("");
+  const [port, setPort] = useState(DIALECTS[0].defaultPort);
+  const [database, setDatabase] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [mode, setMode] = useState("merge");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [logs, setLogs] = useState([]);
   const logEndRef = useRef(null);
 
-  const selectedDialect = DIALECTS.find((d) => d.key === dialect);
-
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ block: "nearest" });
   }, [logs]);
 
+  const handleDialectChange = (key) => {
+    const previousDefault = DIALECTS.find((d) => d.key === dialect)?.defaultPort;
+    // Only swap the port if it's still whatever the last dialect defaulted to
+    // — a port the user typed themselves shouldn't get silently overwritten.
+    if (port === previousDefault) {
+      setPort(DIALECTS.find((d) => d.key === key)?.defaultPort || "");
+    }
+    setDialect(key);
+  };
+
   const handleFetch = async () => {
     setError("");
-    if (!connectionString.trim()) {
-      setError("Enter a connection string first.");
+    if (!host.trim()) {
+      setError("Enter a host first.");
       return;
     }
     setLoading(true);
@@ -69,7 +96,9 @@ export default function ReflectDatabaseModal({ hasExistingTables, onImport, onCl
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ connection_string: connectionString.trim() }),
+        body: JSON.stringify({
+          connection_string: buildConnectionString(dialect, { host, port, database, username, password }),
+        }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
@@ -127,33 +156,56 @@ export default function ReflectDatabaseModal({ hasExistingTables, onImport, onCl
         <div className="flex flex-col gap-3 p-4">
           <p className="text-xs text-muted-foreground">
             Connects once to pull table, column, key and index metadata — nothing is stored server-side, and no data
-            rows are read. This is sent as a plain connection string, so only use it on databases you trust reaching.
+            rows are read. Credentials are sent directly to the database you specify, so only connect to ones you
+            trust reaching.
           </p>
 
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="flex flex-col gap-1">
-              <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Database</span>
-              <Select value={dialect} onValueChange={setDialect}>
-                <SelectTrigger className="w-[160px] font-mono text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {DIALECTS.map((d) => (
-                    <SelectItem key={d.key} value={d.key}>
-                      {d.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="flex flex-col gap-1">
+            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Database type</span>
+            <Select value={dialect} onValueChange={handleDialectChange}>
+              <SelectTrigger className="w-[160px] font-mono text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DIALECTS.map((d) => (
+                  <SelectItem key={d.key} value={d.key}>
+                    {d.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <div className="flex flex-[3] min-w-[160px] flex-col gap-1">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Host</span>
+              <Input value={host} onChange={(e) => setHost(e.target.value)} placeholder="localhost" />
             </div>
-            <div className="flex flex-1 flex-col gap-1">
+            <div className="flex flex-1 min-w-[80px] flex-col gap-1">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Port</span>
+              <Input value={port} onChange={(e) => setPort(e.target.value)} placeholder="5432" />
+            </div>
+            <div className="flex flex-[2] min-w-[140px] flex-col gap-1">
               <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                Connection string
+                Database name
               </span>
+              <Input value={database} onChange={(e) => setDatabase(e.target.value)} placeholder="dbname" />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <div className="flex flex-1 min-w-[140px] flex-col gap-1">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Username</span>
+              <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="user" />
+            </div>
+            <div className="flex flex-1 min-w-[140px] flex-col gap-1">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Password</span>
               <Input
-                value={connectionString}
-                onChange={(e) => setConnectionString(e.target.value)}
-                placeholder={selectedDialect?.placeholder}
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="password"
+                autoComplete="new-password"
               />
             </div>
           </div>
