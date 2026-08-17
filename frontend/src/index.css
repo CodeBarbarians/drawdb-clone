@@ -135,6 +135,7 @@ select {
 /* ---------- Auth pages ---------- */
 .auth-page {
   height: 100vh;
+  height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -463,12 +464,14 @@ select {
 /* ---------- Editor ---------- */
 .editor {
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
 }
 
 .editor-loading {
   height: 100vh;
+  height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;

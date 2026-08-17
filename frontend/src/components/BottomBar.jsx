@@ -24,9 +24,9 @@ export default function BottomBar({ view, viewLoading, onViewChange, tableCount,
           )}
         </div>
       )}
-      <div className="flex items-center gap-3 px-3 py-1.5">
+      <div className="flex items-center gap-2 px-2 py-1.5 sm:gap-3 sm:px-3">
         <button
-          className={`rounded-sm px-2 py-1 font-mono text-[11px] uppercase tracking-wider ${
+          className={`shrink-0 rounded-sm px-2 py-1 font-mono text-[11px] uppercase tracking-wider ${
             view === "structure" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"
           }`}
           onClick={() => onViewChange("structure")}
@@ -34,24 +34,24 @@ export default function BottomBar({ view, viewLoading, onViewChange, tableCount,
           Structure
         </button>
         <button
-          className={`rounded-sm px-2 py-1 font-mono text-[11px] uppercase tracking-wider ${
+          className={`shrink-0 rounded-sm px-2 py-1 font-mono text-[11px] uppercase tracking-wider ${
             view === "code" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"
           }`}
           onClick={() => onViewChange("code")}
         >
           Code
         </button>
-        {viewLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
-        <span className="font-mono text-[11px] text-muted-foreground">
+        {viewLoading && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />}
+        <span className="hidden truncate font-mono text-[11px] text-muted-foreground sm:inline">
           {tableCount} tables · {relationshipCount} relationships
         </span>
         <div className="flex-1" />
         <button
-          className="flex items-center gap-1 rounded-sm px-2 py-1 font-mono text-[11px] uppercase tracking-wider text-muted-foreground hover:text-foreground"
+          className="flex shrink-0 items-center gap-1 rounded-sm px-2 py-1 font-mono text-[11px] uppercase tracking-wider text-muted-foreground hover:text-foreground"
           onClick={() => setProblemsOpen((v) => !v)}
         >
           <ChevronUp className={`h-3 w-3 transition-transform ${problemsOpen ? "" : "rotate-180"}`} />
-          Problems
+          <span className="hidden sm:inline">Problems</span>
           {errorCount > 0 && <span className="text-destructive">({errorCount})</span>}
           {errorCount === 0 && warningCount > 0 && <span className="text-[color:var(--success)]">({warningCount})</span>}
         </button>

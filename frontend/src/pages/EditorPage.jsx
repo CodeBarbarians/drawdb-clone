@@ -211,7 +211,7 @@ export default function EditorPage() {
   ) : null;
   const [globalLocked, setGlobalLocked] = useState(false);
   const [isExportingImage, setIsExportingImage] = useState(false);
-  const [showSidebar, setShowSidebar] = useState(true);
+  const [showSidebar, setShowSidebar] = useState(() => window.innerWidth >= 768);
   const [sidebarDetached, setSidebarDetached] = useState(false);
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
@@ -1250,9 +1250,18 @@ export default function EditorPage() {
         onShowProfile={() => setShowProfile(true)}
         onLogout={logout}
       />
-      <div className="flex flex-1 overflow-hidden">
+      <div className="relative flex flex-1 overflow-hidden">
         {showSidebar && (
-          <div className={sidebarDetached ? "py-3 pl-3" : ""}>
+          <>
+            <div
+              className="absolute inset-0 z-30 bg-black/50 md:hidden"
+              onClick={() => setShowSidebar(false)}
+            />
+            <div
+              className={`absolute inset-y-0 left-0 z-40 max-w-[85vw] overflow-hidden shadow-2xl md:static md:z-auto md:max-w-none md:overflow-visible md:shadow-none ${
+                sidebarDetached ? "py-3 pl-3" : ""
+              }`}
+            >
             <Sidebar
               tables={nodes.map((n) => n.data.table)}
               relationships={buildDiagramModel().relationships}
@@ -1286,7 +1295,8 @@ export default function EditorPage() {
               onUpdateArea={updateSubjectArea}
               onDeleteArea={deleteSubjectArea}
             />
-          </div>
+            </div>
+          </>
         )}
         <div className="editor__canvas relative flex-1" ref={canvasRef}>
           {/* Kept mounted under the code view (instead of unmounting) so toggling
