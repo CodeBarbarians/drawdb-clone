@@ -539,7 +539,9 @@ export default function EditorPage() {
         setSubjectAreas((as) => {
           const shapes = as.map((a) => ({ id: a.id, position: a.position, selected: !!a.selected }));
           const updated = new Map(applyNodeChanges(areaChanges, shapes).map((u) => [u.id, u]));
-          return as.map((a) => (updated.has(a.id) ? { ...a, position: updated.get(a.id).position, selected: updated.get(a.id).selected } : a));
+          return as
+            .filter((a) => updated.has(a.id))
+            .map((a) => ({ ...a, position: updated.get(a.id).position, selected: updated.get(a.id).selected }));
         });
 
         if (moves.length) {
