@@ -31,6 +31,7 @@ import {
   Upload,
   User,
   Wand2,
+  Waves,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -123,6 +124,8 @@ export default function MenuBar({
   onToggleTheme,
   autoSave,
   onToggleAutoSave,
+  animateRelationships,
+  onToggleAnimateRelationships,
   onShowZoomSettings,
   onShowTableWidthSettings,
   onAutoArrange,
@@ -245,6 +248,9 @@ export default function MenuBar({
   const settingsItems = (
     <>
       <DropdownMenuItem onClick={onToggleAutoSave}>{autoSave ? "Disable" : "Enable"} autosave</DropdownMenuItem>
+      <DropdownMenuItem onClick={onToggleAnimateRelationships}>
+        {animateRelationships ? "Disable" : "Enable"} animated relationship lines
+      </DropdownMenuItem>
       <DropdownMenuItem onClick={onShowZoomSettings}>Zoom speed…</DropdownMenuItem>
       <DropdownMenuItem onClick={onShowTableWidthSettings}>Table width…</DropdownMenuItem>
       <DropdownMenuItem disabled>Language</DropdownMenuItem>
@@ -344,6 +350,12 @@ export default function MenuBar({
           label: `${autoSave ? "Disable" : "Enable"} autosave`,
           icon: RefreshCw,
           onSelect: onToggleAutoSave,
+        },
+        {
+          id: "animate-relationships",
+          label: `${animateRelationships ? "Disable" : "Enable"} animated relationship lines`,
+          icon: Waves,
+          onSelect: onToggleAnimateRelationships,
         },
         { id: "zoom-speed", label: "Zoom speed…", icon: Gauge, onSelect: onShowZoomSettings },
         { id: "table-width", label: "Table width…", icon: Ruler, onSelect: onShowTableWidthSettings },

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import client from "../api/client";
 
 const AuthContext = createContext(null);
@@ -38,6 +38,13 @@ export function AuthProvider({ children }) {
     setToken(null);
     setUser(null);
   }, []);
+
+  // The axios client dispatches this when a request comes back 401,
+  // which happens when the stored token has expired or been invalidated.
+  useEffect(() => {
+    window.addEventListener("auth-expired", logout);
+    return () => window.removeEventListener("auth-expired", logout);
+  }, [logout]);
 
   // Used after an OAuth redirect (Google/GitHub) hands back a bare token —
   // fetch the profile it belongs to before storing the session.

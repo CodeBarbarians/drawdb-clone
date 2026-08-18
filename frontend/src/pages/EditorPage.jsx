@@ -178,6 +178,9 @@ export default function EditorPage() {
   const [showMiniMap, setShowMiniMap] = useState(true);
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
   const [autoSave, setAutoSave] = useState(() => localStorage.getItem("autoSave") !== "false");
+  const [animateRelationships, setAnimateRelationships] = useState(
+    () => localStorage.getItem("animateRelationships") !== "false"
+  );
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [showZoomSettings, setShowZoomSettings] = useState(false);
@@ -1255,6 +1258,13 @@ export default function EditorPage() {
             return !v;
           })
         }
+        animateRelationships={animateRelationships}
+        onToggleAnimateRelationships={() =>
+          setAnimateRelationships((v) => {
+            localStorage.setItem("animateRelationships", String(!v));
+            return !v;
+          })
+        }
         onShowZoomSettings={() => setShowZoomSettings(true)}
         onShowTableWidthSettings={() => setShowTableWidthSettings(true)}
         onAutoArrange={handleAutoArrange}
@@ -1322,6 +1332,7 @@ export default function EditorPage() {
               Structure/Code doesn't re-mount every table node on large diagrams. */}
           <div className={view === "structure" ? "h-full" : "hidden"}>
             <ReactFlow
+              className={animateRelationships ? undefined : "relationship-edges-static"}
               nodes={canvasNodes}
               edges={edges}
               onNodesChange={onNodesChange}

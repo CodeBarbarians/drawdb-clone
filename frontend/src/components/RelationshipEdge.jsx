@@ -32,7 +32,6 @@ function RelationshipEdge({
   sourcePosition,
   targetPosition,
   selected,
-  markerEnd,
   data,
 }) {
   const [path] = getSmoothStepPath({
@@ -50,8 +49,24 @@ function RelationshipEdge({
 
   return (
     <>
+      {/* context-stroke ties the arrowhead's fill to the glow path's own live
+          stroke color, so it tracks the same accent/muted/selected states as
+          the line instead of staying a fixed color of its own. */}
+      <defs>
+        <marker
+          id="relationship-edge-arrow"
+          markerWidth="8"
+          markerHeight="8"
+          refX="7"
+          refY="4"
+          orient="auto-start-reverse"
+          markerUnits="strokeWidth"
+        >
+          <path d="M0,0 L8,4 L0,8 z" fill="context-stroke" />
+        </marker>
+      </defs>
       <path d={path} fill="none" strokeOpacity={0} strokeWidth={20} className="react-flow__edge-interaction" />
-      <path id={id} d={path} fill="none" markerEnd={markerEnd} className={glowClass} />
+      <path id={id} d={path} fill="none" markerEnd="url(#relationship-edge-arrow)" className={glowClass} />
       <path d={path} fill="none" className={flowClass} />
       <EdgeLabelRenderer>
         <EndpointBadge x={sourceX} y={sourceY} position={sourcePosition} label={sourceLabel} />

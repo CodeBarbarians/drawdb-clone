@@ -12,4 +12,19 @@ client.interceptors.request.use((config) => {
   return config;
 });
 
+client.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error.response?.status;
+    const url = error.config?.url || "";
+    const isAuthEndpoint = url.startsWith("/auth/login") || url.startsWith("/auth/register");
+    if (status === 401 && !isAuthEndpoint && localStorage.getItem("token")) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      window.dispatchEvent(new Event("auth-expired"));
+    }
+    return Promise.reject(error);
+  }
+);
+
 export default client;

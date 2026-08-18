@@ -39,7 +39,7 @@ function TableNode({ data }) {
 
   if (compact) {
     return (
-      <div className="table-node" style={{ borderLeftColor: table.color, ...widthStyle }}>
+      <div className="table-node" style={{ borderTopColor: table.color, ...widthStyle }}>
         <div className="table-node__header">
           <span className="table-node__name table-node__name--static">{table.name}</span>
         </div>
@@ -57,7 +57,7 @@ function TableNode({ data }) {
   }
 
   return (
-    <div className="table-node" style={{ borderLeftColor: table.color, ...widthStyle }}>
+    <div className="table-node" style={{ borderTopColor: table.color, ...widthStyle }}>
       <div className="table-node__header">
         <input
           className="table-node__name nodrag"
